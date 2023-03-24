@@ -127,3 +127,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Trunk code formatter
+.trunk
+
+# Visual Studio Code settings
+.vscode
+*.code-workspace
+
+# Poetry lock file
+poetry.lock
