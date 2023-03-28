@@ -25,6 +25,9 @@ tomli = "^2.0.1"
 traitlets = "^5.8.0"
 keyring = "^23.13.1"
 
+[tool.poetry.extras]
+rest_api = ["pushcart-rest-api"]
+
 [tool.poetry.group.dev.dependencies]
 black = { version = "^23.1a1", allow-prereleases = true }
 pytest = "^7.2.0"
