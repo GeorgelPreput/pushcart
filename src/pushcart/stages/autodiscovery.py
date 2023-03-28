@@ -23,15 +23,14 @@ def _recursive_import(module, base_class, classes):
                 for _, cls in inspect.getmembers(submodule, inspect.isclass):
                     if issubclass(cls, base_class) and cls != base_class:
                         classes[name] = cls
-        except ModuleNotFoundError:
+        except (ModuleNotFoundError, ImportError):
             pass
 
 
 @lru_cache(maxsize=None)
-def __discover_classes(package_name, base_class):
+def _discover_classes(package_name, base_class):
     classes = {}
 
-    print(package_name)
     try:
         package = importlib.import_module(package_name)
         _recursive_import(package, base_class, classes)
@@ -42,7 +41,7 @@ def __discover_classes(package_name, base_class):
 
 
 @lru_cache(maxsize=None)
-def __get_installed_packages():
+def _get_installed_packages():
     packages = {}
     for stage in ["sources", "transformations", "destinations"]:
         packages[stage] = []
@@ -71,13 +70,13 @@ def get_stage_object(stage: str, config: dict, run_ts: datetime):
     if stage not in base_classes:
         raise ValueError(f"Unknown stage: {stage}")
 
-    stage_packages = __get_installed_packages()
+    stage_packages = _get_installed_packages()
 
     stage_classes = {}
 
     for package_name in stage_packages[stage]:
         try:
-            stage_classes.update(__discover_classes(package_name, base_classes[stage]))
+            stage_classes.update(_discover_classes(package_name, base_classes[stage]))
         except ImportError:
             pass
 
