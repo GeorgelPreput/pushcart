@@ -58,7 +58,7 @@ destinations:
 
 The `sources` field is composed of an array of one or more source objects, each defined using the following fields:
 
-- **from**: [_required_]  
+- **data**: [_required_]  
   Location of data source, could be a table name, a path to a Delta Table folder, a URL, etc.
   
   Examples:
@@ -93,11 +93,11 @@ The `sources` field is composed of an array of one or more source objects, each 
 
   ```yaml
   sources:
-  - from: metastore.schema.table_name
+  - data: metastore.schema.table_name
     type: table
     into: vw__raw__schema_table_name
 
-  - from: ext://path/to/delta/table
+  - data: ext://path/to/delta/table
     type: delta
     into: vw__raw__delta_table_name
   ```
@@ -107,7 +107,7 @@ The `sources` field is composed of an array of one or more source objects, each 
   ```json
   "sources": [
       {
-          "from": "ext://path/to/autoloader/folder",
+          "data": "ext://path/to/autoloader/folder",
           "type": "autoloader",
           "into": "vw__raw__data_source_name",
           "validations": [
@@ -122,9 +122,9 @@ The `sources` field is composed of an array of one or more source objects, each 
 
 ## Transformations
 
-Also composed of an array of incremental transformations, each transformation object applies onto an existing DLT view or table, as defined within the other sections of the pipeline, and produces its result in a DLT view as well. The order of transformations is defined in a DAG (directed, acyclical graph) composed of nodes (`from` and `into` views) and edges (the upstream/downstream relationships between them).
+Also composed of an array of incremental transformations, each transformation object applies onto an existing DLT view or table, as defined within the other sections of the pipeline, and produces its result in a DLT view as well. The order of transformations is defined in a DAG (directed, acyclical graph) composed of nodes (`data` and `into` views) and edges (the upstream/downstream relationships between them).
 
-- **from**: [_required_]  
+- **data**: [_required_]  
   View or table name to apply transformation to. Should already have been defined as target `into` field in a previous item within `sources`, `transformations` or `destinations`.
 
   Examples: `vw__bronze__some_table_name`, `vw__silver__table_name_applied_transformation`
@@ -154,14 +154,14 @@ Also composed of an array of incremental transformations, each transformation ob
 
   ```yaml
   transformations:
-  - from: vw__silver__item_cost
+  - data: vw__silver__item_cost
     into: vw__silver__item_cost_monthly_avg
     sql_query: |
       SELECT month, item_id, avg(price) AS average_price
       FROM vw__silver__item_cost
       GROUP BY item_id, month 
 
-  - from: vw__silver__item_cost_monthly_avg
+  - data: vw__silver__item_cost_monthly_avg
     into: vw__silver__item_cost_monthly_avg_summer
     sql_query: |
       SELECT * FROM vw__bronze__item_cost_monthly_avg
@@ -176,7 +176,7 @@ Also composed of an array of incremental transformations, each transformation ob
   ```json
   "transformations": [
       {
-          "from": "vw__bronze__it_events",
+          "data": "vw__bronze__it_events",
           "into": "vw__silver__it_events",
           "config": "./it_events.csv"
       }
@@ -187,7 +187,7 @@ Also composed of an array of incremental transformations, each transformation ob
 
 Array of target DLT tables to write into. These tables must not already be managed by another pipeline.
 
-- **from**: [_required_]  
+- **data**: [_required_]  
   DLT view to use as data source. The data presented by this view will be written to disk without any further transformations
 
   Examples: `vw__raw__some_table_name` or `vw__bronze__some_other_table_transformed`
@@ -208,16 +208,24 @@ Array of target DLT tables to write into. These tables must not already be manag
 - **mode**: [_required_]  
   Write mode for table. Accepts either `append` or `upsert`. Upserting will result in an SCD type 2 being created.
 
+- **keys**: [_optional_]  
+  **Required for `mode: upsert`** List of columns composing the table's primary key.
+
+- **sequence_by**: [_optional_]  
+  **Required for `mode: upsert`** Column defining the sequence of records as a monotonically increasing representation of the proper ordering of data.
+
 ### Sample destinations
 
 - **YAML**
 
   ```yaml
   destinations:
-  - from: vw__bronze__sample_table_transformed
+  - data: vw__bronze__sample_table_transformed
     into: vw__silver__sample_table
     path: ext://schema_folder/silver/sample_table
     mode: upsert
+    keys: [pk_part_one, pk_part_two]
+    sequence_by: event_ts
   ```
 
 - **JSON**
@@ -225,7 +233,7 @@ Array of target DLT tables to write into. These tables must not already be manag
   ```json
   "destinations": [
     {
-        "from": "vw__raw__sample_table",
+        "data": "vw__raw__sample_table",
         "into": "vw__bronze__sample_table",
         "path": "ext://schema_folder/bronze/sample_table",
         "mode": "append"
