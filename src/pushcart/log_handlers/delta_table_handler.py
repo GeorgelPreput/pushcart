@@ -110,3 +110,6 @@ class DeltaTableHandler(logging.Handler):
             self.timer = None
 
         self.flush_buffer()
+
+    def __del__(self):
+        self.close()
