@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from time import time
+from unittest.mock import call
 
 import pytest
 
@@ -190,4 +191,11 @@ class TestDeltaTableHandler:
                 }
             ],
             schema=handler.schema,
+        )
+        df_write.assert_has_calls(
+            [
+                call.format("delta"),
+                call.format().mode("append"),
+                call.format().mode().save(handler.table_path),
+            ]
         )
