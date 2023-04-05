@@ -3,7 +3,8 @@ from functools import lru_cache
 from pyspark.sql import SparkSession
 
 try:
-    spark
+    if isinstance(spark, SparkSession):
+        pass
 except NameError:
     spark = None
 
@@ -34,9 +35,9 @@ try:
 
     dbutils.secrets.get = __get_cached_secret
 except ImportError:
-    from pushcart.dbutils import DBUtils
+    from .dbutils import DBUtils
 
     dbutils = DBUtils()
 
 
-__all__ = ["configuration", "setup", "stages"]
+__all__ = ["setup", "stages"]

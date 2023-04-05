@@ -1,16 +1,23 @@
 import logging
 import threading
 from datetime import datetime
+from pathlib import Path
 from queue import Full, Queue
 from time import time
+from typing import Optional
 
 from delta.tables import DeltaTable
+from pydantic import conint, dataclasses, validator
 from pyspark.sql.types import _parse_datatype_string
 
 from pushcart import spark
 
 
+@dataclasses.dataclass
 class DeltaTableHandler(logging.Handler):
+    table_path: Path
+    buffer_size: Optional[conint(strict=True, gt=0)] = 100
+    flush_interval: Optional[conint(strict=True, gt=0)] = 15
     """
     The DeltaTableHandler class is a logging handler that writes log records to a Delta
     table in Apache Spark. It buffers log records and periodically flushes them to the
@@ -24,16 +31,24 @@ class DeltaTableHandler(logging.Handler):
     - schema: the schema of the Delta table.
     """
 
-    def __init__(self, table_path, buffer_size=100, flush_interval=15):
+    @validator("table_path", pre=False, always=True)
+    @classmethod
+    def convert_to_absolute_string(cls, value: Optional[Path]) -> Optional[str]:
+        """
+        Validator that converts the Path object to its absolute POSIX representation
+        """
+        if value:
+            return value.absolute().as_posix()
+
+        return None
+
+    def __post_init_post_parse__(self):
         """
         Initializes the DeltaTableHandler object with the table path, buffer size, and
         flush interval. It also initializes the buffer, schema, and starts the flush
         timer.
         """
-        super().__init__()
-        self.table_path = table_path
-        self.buffer = Queue(maxsize=buffer_size)
-        self.flush_interval = flush_interval
+        self.buffer = Queue(maxsize=self.buffer_size)
         self.timer = None
         self.schema = _parse_datatype_string(
             "struct<timestamp:timestamp,origin:string,level:string,message:string>"

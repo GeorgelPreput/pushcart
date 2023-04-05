@@ -1,0 +1,33 @@
+{
+    "name": "release",
+    "max_concurrent_runs": 1,
+    "job_clusters": [
+        {
+            "job_cluster_key": "release",
+            "new_cluster": {
+                "spark_version": null,
+                "node_type_id": null,
+                "num_workers": 0,
+                "spark_conf": {
+                    "spark.databricks.cluster.profile": "singleNode",
+                    "spark.master": "local[*, 4]"
+                },
+                "custom_tags": {
+                    "ResourceClass": "SingleNode"
+                }
+            }
+        }
+    ],
+    "tasks": [
+        {
+            "task_key": "release",
+            "description": "Update metadata, schedule new pipelines and remove obsolete ones",
+            "python_wheel_task": {
+                "package_name": "pushcart",
+                "parameters": [
+                    "release"
+                ]
+            }
+        }
+    ]
+}

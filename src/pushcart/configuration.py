@@ -1,4 +1,5 @@
 from itertools import groupby
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from pydantic import Field, FilePath, constr, dataclasses, root_validator, validator
@@ -75,10 +76,6 @@ class Source:
     remote URLs, and non-empty strings. The class also allows for optional parameters
     and validations to be associated with the data source.
 
-    Methods:
-    - check_multiple_validations_with_same_rule: a validator that checks that there are
-      no multiple validations with the same rule.
-
     Fields:
     The Source class has five main fields:
     - data: represents the data source itself, and can be of type Path, AnyUrl, or
@@ -103,6 +100,9 @@ class Source:
     @validator("validations")
     @classmethod
     def check_multiple_validations_with_same_rule(cls, value):
+        """
+        Validator that checks that there are no multiple validations with the same rule
+        """
         if value and (fails := _get_multiple_validations_with_same_rule(value)):
             raise ValueError(f"Different actions for the same validation:\n{fails}")
         return value
@@ -116,13 +116,6 @@ class Transformation:
     fields is defined and that at least one of them is defined. It also allows for a
     list of Validation objects to be included to ensure that the transformation meets
     certain criteria.
-
-    Methods:
-    - check_only_one_of_config_or_sql_query_defined: a root validator method that
-    checks that only one of the config or sql_query fields is defined and that at
-    least one of them is defined.
-    - check_multiple_validations_with_same_rule: a validator that checks that there are
-      no multiple validations with the same rule.
 
     Fields:
     - data: a required string field that represents the data view to be transformed.
@@ -145,6 +138,10 @@ class Transformation:
     @root_validator(pre=True)
     @classmethod
     def check_only_one_of_config_or_sql_query_defined(cls, values):
+        """
+        Root validator method that checks that only one of the config or sql_query
+        fields is defined and that at least one of them is defined.
+        """
         if not any(values[v] for v in ["config", "sql_query"]):
             raise ValueError(
                 "No transformation defined. Please provide either a config or a sql_query"
@@ -156,6 +153,9 @@ class Transformation:
     @validator("validations")
     @classmethod
     def check_multiple_validations_with_same_rule(cls, value):
+        """
+        Validator that checks that there are no multiple validations with the same rule
+        """
         if value and (fails := _get_multiple_validations_with_same_rule(value)):
             raise ValueError(f"Different actions for the same validation:\n{fails}")
         return value
@@ -170,12 +170,6 @@ class Destination:
     validations. The class provides validation for the fields and checks that the keys
     and sequence_by fields are defined for upsert mode. It also checks that there are
     no multiple validations with the same rule.
-
-    Methods:
-    - check_keys_and_sequence_for_upsert: a root validator that checks that the keys
-      and sequence_by fields are defined for upsert mode.
-    - check_multiple_validations_with_same_rule: a validator that checks that there are
-      no multiple validations with the same rule.
 
     Fields:
     - data: a string that represents the data view to be written to the destination.
@@ -193,7 +187,7 @@ class Destination:
     data: constr(min_length=1, strict=True)
     into: constr(min_length=1, strict=True)
     mode: constr(min_length=1, strict=True, regex=r"^(append|upsert)$")
-    path: Optional[constr(min_length=1, strict=True)] = None
+    path: Optional[Path] = None
     keys: Optional[List[constr(min_length=1, strict=True)]] = Field(
         default_factory=list
     )
@@ -203,6 +197,10 @@ class Destination:
     @root_validator(pre=True)
     @classmethod
     def check_keys_and_sequence_for_upsert(cls, values):
+        """
+        Root validator that checks that the keys and sequence_by fields are defined for
+        upsert mode.
+        """
         if values.get("mode") == "upsert" and not all(
             [values[v] for v in ["keys", "sequence_by"]]
         ):
@@ -214,9 +212,23 @@ class Destination:
     @validator("validations")
     @classmethod
     def check_multiple_validations_with_same_rule(cls, value):
+        """
+        Validator that checks that there are no multiple validations with the same rule
+        """
         if value and (fails := _get_multiple_validations_with_same_rule(value)):
             raise ValueError(f"Different actions for the same validation:\n{fails}")
         return value
+
+    @validator("path", pre=False, always=True)
+    @classmethod
+    def convert_to_absolute_string(cls, value: Optional[Path]) -> Optional[str]:
+        """
+        Validator that converts the Path object to its absolute POSIX representation
+        """
+        if value:
+            return value.absolute().as_posix()
+
+        return None
 
 
 @dataclasses.dataclass
@@ -226,11 +238,6 @@ class Configuration:
     pipeline. It contains optional lists of Source, Transformation, and Destination
     objects, which define the stages of the pipeline. The class provides validation to
     ensure that at least one stage is defined in the configuration file.
-
-    Methods:
-    - check_at_least_one_stage_defined: a root validator method that checks that at
-      least one of the sources, transformations, or destinations fields is defined in
-      the configuration file.
 
     Fields:
     - sources: an optional list of Source objects that represent the data sources for
@@ -248,6 +255,10 @@ class Configuration:
     @root_validator(pre=True)
     @classmethod
     def check_at_least_one_stage_defined(cls, values):
+        """
+        Root validator method that checks that at least one of the sources,
+        transformations, or destinations fields is defined in the configuration file.
+        """
         if not any(v in ["sources", "transformations", "destinations"] for v in values):
             raise ValueError(
                 "No stage definition found. Please define at least one of: sources, transformations, destinations"

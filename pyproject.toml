@@ -42,6 +42,7 @@ ipykernel = "^6.22.0"
 
 [tool.poetry.scripts]
 pushcart = "pushcart.cli:cli"
+pushcart-deploy = "pushcart.setup.deployment:deploy"
 
 [build-system]
 requires = ["poetry-core"]
