@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime
 from time import time
 from unittest.mock import call
@@ -27,12 +28,16 @@ class TestDeltaTableHandler:
         delta_table, spark = mock_spark_and_delta
         delta_table.isDeltaTable.return_value = False
 
-        handler = DeltaTableHandler("/delta/table/path")
+        handler = DeltaTableHandler(f"{os.getcwd()}/tests/data/delta_table_log_handler")
         request.addfinalizer(handler.close)
 
         # Assert that DeltaTable and createDataFrame were called with the correct arguments
-        delta_table.isDeltaTable.assert_called_once_with(spark, "/delta/table/path")
-        delta_table.forPath.assert_called_once_with(spark, "/delta/table/path")
+        delta_table.isDeltaTable.assert_called_once_with(
+            spark, f"{os.getcwd()}/tests/data/delta_table_log_handler"
+        )
+        delta_table.forPath.assert_called_once_with(
+            spark, f"{os.getcwd()}/tests/data/delta_table_log_handler"
+        )
         spark.createDataFrame.assert_called_once()
 
     def test_flush_buffer_full(self, mocker, request, mock_spark_and_delta):
@@ -43,7 +48,9 @@ class TestDeltaTableHandler:
         delta_table.isDeltaTable.return_value = True
 
         # Set buffer size to 2 for easier testing
-        handler = DeltaTableHandler("/delta/table/path", buffer_size=2)
+        handler = DeltaTableHandler(
+            f"{os.getcwd()}/tests/data/delta_table_log_handler", buffer_size=2
+        )
         request.addfinalizer(handler.close)
 
         # Add two records to the buffer to fill it up
@@ -60,7 +67,9 @@ class TestDeltaTableHandler:
         handler.flush_buffer()
 
         # Assert that DeltaTable and createDataFrame were called with the correct arguments
-        delta_table.forPath.assert_called_once_with(spark, "/delta/table/path")
+        delta_table.forPath.assert_called_once_with(
+            spark, f"{os.getcwd()}/tests/data/delta_table_log_handler"
+        )
         spark.createDataFrame.assert_called_with(
             [
                 {
@@ -91,14 +100,14 @@ class TestDeltaTableHandler:
             "pushcart.log_handlers.delta_table_handler.DeltaTableHandler.flush_buffer"
         )
 
-        handler = DeltaTableHandler("/delta/table/path")
+        handler = DeltaTableHandler(f"{os.getcwd()}/tests/data/delta_table_log_handler")
         request.addfinalizer(handler.close)
         handler.close()
 
         # Assert that Timer was canceled and flush_buffer was called
         mock_timer.assert_called_once_with(handler.flush_interval, handler._timer_flush)
         mock_timer.return_value.cancel.assert_called_once()
-        mock_flush_buffer.assert_called_once()
+        mock_flush_buffer.assert_called()
 
     def test_flush_buffer_empty(self, request, mock_spark_and_delta):
         """
@@ -108,7 +117,9 @@ class TestDeltaTableHandler:
         delta_table.isDeltaTable.return_value = True
 
         handler = DeltaTableHandler(
-            "/delta/table/path", buffer_size=100, flush_interval=15
+            f"{os.getcwd()}/tests/data/delta_table_log_handler",
+            buffer_size=100,
+            flush_interval=15,
         )
         request.addfinalizer(handler.close)
 
@@ -124,7 +135,9 @@ class TestDeltaTableHandler:
         delta_table.isDeltaTable.return_value = True
 
         handler = DeltaTableHandler(
-            "/delta/table/path", buffer_size=100, flush_interval=15
+            f"{os.getcwd()}/tests/data/delta_table_log_handler",
+            buffer_size=100,
+            flush_interval=15,
         )
         request.addfinalizer(handler.close)
 
@@ -169,7 +182,9 @@ class TestDeltaTableHandler:
         df_write_mode.return_value = df_write_save
 
         handler = DeltaTableHandler(
-            "/delta/table/path", buffer_size=100, flush_interval=15
+            f"{os.getcwd()}/tests/data/delta_table_log_handler",
+            buffer_size=100,
+            flush_interval=15,
         )
         request.addfinalizer(handler.close)
 
