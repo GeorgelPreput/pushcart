@@ -35,6 +35,7 @@ class Deployment:
 
     def __post_init_post_parse__(self):
         self.log = logging.getLogger(__name__)
+        self.log.setLevel(logging.INFO)
 
         init_log = f"""
           Using deployment parameters:

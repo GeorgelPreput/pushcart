@@ -26,6 +26,7 @@ class JobsWrapper:
 
     def __post_init_post_parse__(self):
         self.log = logging.getLogger(__name__)
+        self.log.setLevel(logging.INFO)
 
         self.jobs_api = JobsApi(self.client)
         self.runs_api = RunsApi(self.client)

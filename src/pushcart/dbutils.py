@@ -57,6 +57,8 @@ class DBUtils:
 
     def __post_init_post_parse__(self):
         self.log = logging.getLogger(__name__)
+        self.log.setLevel(logging.INFO)
+
         self.log.warning(f"Running locally, secrets will default to the system keyring")
 
         self.config = DatabricksConfig.from_token(self.workspace, self.token, False)

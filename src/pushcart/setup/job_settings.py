@@ -55,6 +55,7 @@ def _get_existing_cluster_id(
     cluster_api = ClusterApi(client)
 
     log = logging.getLogger(__name__)
+    log.setLevel(logging.INFO)
 
     clusters = cluster_api.list_clusters().get("clusters", [])
     clusters_filtered = [c for c in clusters if c["cluster_name"] == cluster_name]
@@ -80,6 +81,7 @@ class JobSettings:
 
     def __post_init_post_parse__(self):
         self.log = logging.getLogger(__name__)
+        self.log.setLevel(logging.INFO)
 
     def load_job_settings(
         self,

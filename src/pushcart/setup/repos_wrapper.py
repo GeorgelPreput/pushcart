@@ -40,6 +40,7 @@ class ReposWrapper:
 
     def __post_init_post_parse__(self):
         self.log = logging.getLogger(__name__)
+        self.log.setLevel(logging.INFO)
 
         self.repos_api = ReposApi(self.client)
         self.repo_id = None
