@@ -5,10 +5,9 @@ from typing import Any, Optional, Union
 import click
 from databricks_cli.configure.config import _get_api_client
 from databricks_cli.configure.provider import DatabricksConfig
-from databricks_cli.jobs.api import JobsApi
-from databricks_cli.runs.api import RunsApi
 from pydantic import FilePath, HttpUrl, Json, constr, dataclasses, validator
 
+from pushcart.setup.jobs_wrapper import JobsWrapper
 from pushcart.setup.repos_wrapper import ReposWrapper
 
 
@@ -16,6 +15,9 @@ from pushcart.setup.repos_wrapper import ReposWrapper
 class Deployment:
     workspace: HttpUrl
     token: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")
+    git_url: HttpUrl
+    git_repo: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")
+    git_branch: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")
     repo_user: Optional[constr(min_length=1, strict=True, regex=r"^[^'\"]*$")] = "main"
     git_provider: Optional[
         constr(
@@ -24,9 +26,6 @@ class Deployment:
             regex=r"^(gitHub|bitbucketCloud|gitLab|azureDevOpsServices|gitHubEnterprise|bitbucketServer|gitLabEnterpriseEdition|awsCodeCommit)$",
         )
     ] = None
-    git_url: HttpUrl
-    git_repo: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")
-    git_branch: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")
     settings_json: Optional[Union[FilePath, Json[Any]]] = None
 
     @validator("git_branch")
@@ -52,11 +51,24 @@ class Deployment:
         config = DatabricksConfig.from_token(self.workspace, self.token, False)
         client = _get_api_client(config)
         self.repos_api = ReposWrapper(client)
-        self.jobs_api = JobsApi(client)
-        self.runs_api = RunsApi(client)
+        self.jobs_api = JobsWrapper(client)
 
     def deploy(self):
-        pass
+        self.repos_api.get_or_create_repo(
+            self.repo_user, self.git_url, self.git_repo, self.git_provider
+        )
+        self.repos_api.update(self.git_branch)
+
+        job_id = self.jobs_api.get_or_create_release_job(self.settings_json)
+        job_status, run_url = self.jobs_api.run_job(job_id)
+
+        log_message = f"Run {job_status} for {job_id}: {run_url}"
+        if job_status == "SUCCESS":
+            self.log.info(log_message)
+        elif job_status == "FAILED":
+            self.log.error(log_message)
+        else:
+            self.log.warning(log_message)
 
 
 @click.command()

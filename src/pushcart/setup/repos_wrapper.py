@@ -94,17 +94,20 @@ class ReposWrapper:
             git_provider = self.detect_git_provider(git_url)
 
         repo_path = Path(os.path.join("/", "Repos", repo_user, git_repo)).as_posix()
-        repo_id = self.repos_api.get_repo_id(path=repo_path)
+        try:
+            self.repo_id = self.repos_api.get_repo_id(path=repo_path)
+        except RuntimeError:
+            pass
 
-        if not repo_id:
+        if not self.repo_id:
             self.log.warning(f"Repo not found, cloning from URL: {git_url}")
 
             repo = self.repos_api.create(git_url, git_provider, repo_path)
-            repo_id = repo["id"]
+            self.repo_id = repo["id"]
 
-        self.log.info(f"Repository ID: {repo_id}")
+        self.log.info(f"Repository ID: {self.repo_id}")
 
-        return repo_id
+        return self.repo_id
 
     def update(self, git_branch: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")):
         """

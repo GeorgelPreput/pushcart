@@ -1,15 +1,14 @@
 import logging
-import operator
-from functools import cache
 from pathlib import Path
+from time import sleep
 from typing import Any, Tuple, Union
 
-from databricks_cli.clusters.api import ClusterApi
 from databricks_cli.jobs.api import JobsApi
+from databricks_cli.runs.api import RunsApi
 from databricks_cli.sdk.api_client import ApiClient
 from pydantic import Json, dataclasses, validator
 
-from pushcart.setup.databricks_job_settings import DatabricksJobSettings
+from pushcart.setup.job_settings import JobSettings
 from pushcart.validation.common import (
     PydanticArbitraryTypesConfig,
     validate_databricks_api_client,
@@ -29,77 +28,70 @@ class JobsWrapper:
         self.log = logging.getLogger(__name__)
 
         self.jobs_api = JobsApi(self.client)
-        self.cluster_api = ClusterApi(self.client)
+        self.runs_api = RunsApi(self.client)
 
-    def get_or_create_release_job(self, settings_json: Union[Json[Any], Path] = None):
-        djs = DatabricksJobSettings(settings_json, "pushcart.setup", "release_job.json")
-        raw_job_settings = djs.load_job_settings()
-        job_settings = self._add_spark_version_and_node_type(raw_job_settings)
+    def get_or_create_release_job(
+        self, settings_json: Union[Json[Any], Path] = None
+    ) -> str:
+        job_settings = JobSettings(self.client).load_job_settings(
+            settings_json, "release"
+        )
 
-        self.get_or_create_job(job_settings)
+        return self.get_or_create_job(job_settings)
 
-    @cache
-    def _get_smallest_cluster_node_type(self) -> str:
-        node_types = [
-            t
-            for t in self.cluster_api.list_node_types()["node_types"]
-            if t["is_deprecated"] is False
-            and t["is_hidden"] is False
-            and t["photon_driver_capable"] is True
-            and t["photon_worker_capable"] is True
-        ]
-        return sorted(
-            node_types, key=operator.itemgetter("num_cores", "memory_mb", "num_gpus")
-        )[0]["node_type_id"]
+    def _get_job(self, job_name: str) -> list:
+        jobs = self.jobs_api.list_jobs().get("jobs", [])
+        jobs_filtered = [j for j in jobs if j["settings"]["name"] == job_name]
 
-    @cache
-    def _get_newest_spark_version(self) -> str:
-        spark_versions = [
-            v
-            for v in self.cluster_api.spark_versions()["versions"]
-            if "LTS Photon" in v["name"]
-        ]
-        return sorted(
-            spark_versions,
-            key=lambda x: float(x["name"].split(" LTS Photon ")[0]),
-            reverse=True,
-        )[0]["key"]
+        return jobs_filtered[0]["job_id"] if jobs_filtered else None
 
-    def _add_spark_version_and_node_type(self, job_settings: dict) -> dict:
-        if not (job_clusters := job_settings.get("job_clusters")):
-            raise ValueError(
-                "Job cluster specification must include at least one cluster"
-            )
+    def _create_job(self, job_settings: dict) -> str:
+        job = self.jobs_api.create_job(job_settings)
+        self.log.info(f"Created job {job_settings['name']} with ID: {job['job_id']}")
 
-        for cluster in job_clusters:
-            cluster["spark_version"] = (
-                cluster["spark_version"] or self._get_newest_spark_version()
-            )
-            cluster["node_type_id"] = (
-                cluster["node_type_id"] or self._get_smallest_cluster_node_type()
-            )
-
-        return job_settings
+        return job["job_id"]
 
     def get_or_create_job(self, job_settings: dict) -> str:
         job_name = job_settings["name"]
 
-        jobs = self.jobs_api.list_jobs().get("jobs", [])
-        jobs_filtered = [j for j in jobs if j["settings"]["name"] == job_name]
+        job_id = self._get_job(job_name)
 
-        if not jobs_filtered:
+        if not job_id:
             self.log.warning(f"Job not found: {job_name}. Creating a new one.")
+            return self._create_job(job_settings)
 
-            job = self.jobs_api.create_job(job_settings)
-            self.log.info(f"Created job {job_name} with ID: {job['job_id']}")
+        self.jobs_api.reset_job({"job_id": job_id, "new_settings": job_settings})
 
-            return job["job_id"]
-
-        job_id = jobs_filtered[0]["job_id"]
-        self.log(f"Job ID: {job_id}")
+        self.log.info(f"Job ID: {job_id}")
 
         return job_id
 
     def run_job(self, job_id: str) -> Tuple[str, str]:
-        # TODO: Check how to obfuscate token in run params
-        pass
+        run_id = self.jobs_api.run_now(
+            job_id=job_id,
+            jar_params=None,
+            notebook_params=None,
+            python_params=None,
+            spark_submit_params=None,
+        )["run_id"]
+
+        job_status = "PENDING"
+
+        job = {}
+        while job_status in ["PENDING", "RUNNING"]:
+            sleep(2)
+            job = self.runs_api.get_run(run_id)
+            job_status = job["state"]["life_cycle_state"]
+
+            logging.info(f"Job is {job_status}: {job['run_page_url']}")
+
+        return (
+            job["state"].get("result_state", job["state"]["life_cycle_state"]),
+            job["run_page_url"],
+        )
+
+    def delete_job(self, job_id: str) -> None:
+        job_name = self.jobs_api.get_job(job_id=job_id)["settings"]["name"]
+        self.jobs_api.delete_job(job_id=job_id)
+
+        logging.info(f"Deleted job {job_name} ({job_id})")
