@@ -97,8 +97,8 @@ class ReposWrapper:
         repo_path = Path(os.path.join("/", "Repos", repo_user, git_repo)).as_posix()
         try:
             self.repo_id = self.repos_api.get_repo_id(path=repo_path)
-        except RuntimeError:
-            pass
+        except Exception:
+            self.log.warning("Failed to get repo ID")
 
         if not self.repo_id:
             self.log.warning(f"Repo not found, cloning from URL: {git_url}")

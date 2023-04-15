@@ -13,6 +13,22 @@ from pushcart.setup.repos_wrapper import ReposWrapper
 
 @dataclasses.dataclass
 class Deployment:
+    """
+    The Deployment class is responsible for deploying the pushcart release job from a
+    Git repository. It gets or creates a repository, updating the repository with a new
+    branch, creates a release job, runs it, and logs the job status.
+
+    Fields:
+    - workspace: the URL of the Databricks workspace
+    - token: the authentication token for the Databricks workspace
+    - git_url: the URL of the Git repository
+    - git_repo: the name of the Git repository
+    - git_branch: the name of the Git branch
+    - repo_user: the name of the repository user (default is "main")
+    - git_provider: the name of the Git provider (optional)
+    - settings_json: the job settings JSON (optional)
+    """
+
     workspace: HttpUrl
     token: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")
     git_url: HttpUrl
@@ -31,6 +47,9 @@ class Deployment:
     @validator("git_branch")
     @classmethod
     def clean_branch_name(cls, value):
+        """
+        Validator method that removes the "refs/heads/" prefix from the Git branch name
+        """
         return value.replace("refs/heads/", "")
 
     def __post_init_post_parse__(self):
@@ -55,6 +74,11 @@ class Deployment:
         self.jobs_api = JobsWrapper(client)
 
     def deploy(self):
+        """
+        Deploys the release job by getting or creating the repository, updating the
+        repository with a new branch, creating a release job, running the job, and
+        logging the job status
+        """
         self.repos_api.get_or_create_repo(
             self.repo_user, self.git_url, self.git_repo, self.git_provider
         )

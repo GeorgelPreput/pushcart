@@ -1,8 +1,22 @@
+import json
+
 import pytest
+from databricks_cli.clusters.api import ClusterApi
+from databricks_cli.jobs.api import JobsApi
 from databricks_cli.repos.api import ReposApi
 from databricks_cli.sdk.api_client import ApiClient
+from pydantic.error_wrappers import ValidationError
 
+from pushcart.setup.deployment import Deployment
+from pushcart.setup.job_settings import (
+    JobSettings,
+    _get_existing_cluster_id,
+    _get_newest_spark_version,
+    _get_smallest_cluster_node_type,
+)
+from pushcart.setup.jobs_wrapper import JobsWrapper
 from pushcart.setup.repos_wrapper import ReposWrapper
+from pushcart.validation.common import validate_databricks_api_client
 
 
 @pytest.fixture(autouse=True)
@@ -93,3 +107,532 @@ class TestReposWrapper:
         repos_wrapper = ReposWrapper(mock_api_client)
         with pytest.raises(ValueError):
             repos_wrapper.update("")
+
+
+class TestGetSmallestClusterNodeType:
+    #
+    def test_get_smallest_cluster_node_type(self, mocker, mock_api_client):
+        """
+        Tests that the function returns the smallest cluster node type when given
+        multiple node types with different specifications, including some that
+        should be filtered out
+        """
+        node_types = [
+            {
+                "node_type_id": "1",
+                "num_cores": 4,
+                "memory_mb": 4096,
+                "num_gpus": 1,
+                "is_deprecated": False,
+                "is_hidden": False,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            },
+            {
+                "node_type_id": "2",
+                "num_cores": 8,
+                "memory_mb": 8192,
+                "num_gpus": 2,
+                "is_deprecated": False,
+                "is_hidden": False,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            },
+            {
+                "node_type_id": "3",
+                "num_cores": 2,
+                "memory_mb": 2048,
+                "num_gpus": 1,
+                "is_deprecated": False,
+                "is_hidden": False,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            },
+            {
+                "node_type_id": "4",
+                "num_cores": 2,
+                "memory_mb": 2048,
+                "num_gpus": 1,
+                "is_deprecated": True,
+                "is_hidden": False,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            },
+            {
+                "node_type_id": "5",
+                "num_cores": 1,
+                "memory_mb": 1024,
+                "num_gpus": 0,
+                "is_deprecated": False,
+                "is_hidden": True,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            },
+            {
+                "node_type_id": "6",
+                "num_cores": 1,
+                "memory_mb": 1024,
+                "num_gpus": 0,
+                "is_deprecated": False,
+                "is_hidden": False,
+                "photon_driver_capable": False,
+                "photon_worker_capable": True,
+            },
+        ]
+
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+        mocker.patch.object(
+            ClusterApi, "list_node_types", return_value={"node_types": node_types}
+        )
+
+        result = _get_smallest_cluster_node_type(mock_api_client)
+
+        assert result == "3"
+
+    #
+    def test_get_smallest_cluster_node_type_with_multiple_same_specs(
+        self, mocker, mock_api_client
+    ):
+        """
+        Tests the behavior of the function when multiple node types have the same
+        specifications.
+        """
+        node_types = [
+            {
+                "node_type_id": "1",
+                "num_cores": 2,
+                "memory_mb": 4096,
+                "num_gpus": 0,
+                "is_deprecated": False,
+                "is_hidden": False,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            },
+            {
+                "node_type_id": "2",
+                "num_cores": 4,
+                "memory_mb": 8192,
+                "num_gpus": 1,
+                "is_deprecated": False,
+                "is_hidden": False,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            },
+            {
+                "node_type_id": "3",
+                "num_cores": 1,
+                "memory_mb": 2048,
+                "num_gpus": 0,
+                "is_deprecated": False,
+                "is_hidden": False,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            },
+            {
+                "node_type_id": "4",
+                "num_cores": 1,
+                "memory_mb": 2048,
+                "num_gpus": 0,
+                "is_deprecated": False,
+                "is_hidden": False,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            },
+        ]
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+        mocker.patch.object(
+            ClusterApi, "list_node_types", return_value={"node_types": node_types}
+        )
+
+        result = _get_smallest_cluster_node_type(mock_api_client)
+
+        assert result == "3"
+
+    def test_caching_behavior_get_smallest_cluster_node_type(
+        self, mocker, mock_api_client
+    ):
+        """
+        Tests that the function has caching behavior.
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+
+        node_types = [
+            {
+                "node_type_id": "type1",
+                "num_cores": 2,
+                "memory_mb": 8192,
+                "num_gpus": 0,
+                "is_deprecated": False,
+                "is_hidden": False,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            }
+        ]
+        mocker.patch.object(
+            ClusterApi, "list_node_types", return_value={"node_types": node_types}
+        )
+
+        first_result = _get_smallest_cluster_node_type(mock_api_client)
+
+        node_types = [
+            {
+                "node_type_id": "type1",
+                "num_cores": 4,
+                "memory_mb": 8192,
+                "num_gpus": 1,
+                "is_deprecated": False,
+                "is_hidden": False,
+                "photon_driver_capable": True,
+                "photon_worker_capable": True,
+            }
+        ]
+        mocker.patch.object(
+            ClusterApi, "list_node_types", return_value={"node_types": node_types}
+        )
+
+        second_result = _get_smallest_cluster_node_type(mock_api_client)
+        assert first_result == second_result
+
+
+class TestGetNewestSparkVersion:
+    def test_get_newest_spark_version_when_only_one_version_available(
+        self, mocker, mock_api_client
+    ):
+        """
+        Tests that the function returns the newest Spark version when there are
+        multiple versions available, some not containing "LTS", or containing "ML".
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+        mocker.patch.object(
+            ClusterApi,
+            "spark_versions",
+            return_value={
+                "versions": [
+                    {
+                        "key": "10.4.x-aarch64-scala2.12",
+                        "name": "10.4 LTS aarch64 (includes Apache Spark 3.2.1, Scala 2.12)",
+                    },
+                    {
+                        "key": "12.2.x-aarch64-scala2.12",
+                        "name": "12.2 LTS aarch64 (includes Apache Spark 3.3.2, Scala 2.12)",
+                    },
+                    {
+                        "key": "12.2.x-gpu-ml-scala2.12",
+                        "name": "12.2 LTS ML (includes Apache Spark 3.3.2, GPU, Scala 2.12)",
+                    },
+                    {
+                        "key": "13.0.x-scala2.12",
+                        "name": "13.0 (includes Apache Spark 3.4.0, Scala 2.12)",
+                    },
+                ]
+            },
+        )
+        assert _get_newest_spark_version(mock_api_client) == "12.2.x-aarch64-scala2.12"
+
+    def test_get_newest_spark_version_returns_empty_string_when_no_versions_available(
+        self, mocker, mock_api_client
+    ):
+        """
+        Tests that the function returns None when there are no Spark versions available
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+        mocker.patch.object(
+            ClusterApi,
+            "spark_versions",
+            return_value={"versions": []},
+        )
+        assert _get_newest_spark_version(mock_api_client) == None
+
+    def test_caching_behavior_get_newest_spark_version(self, mocker, mock_api_client):
+        """
+        Tests that the function has caching behavior.
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+
+        versions = [
+            {
+                "key": "12.2.x-aarch64-scala2.12",
+                "name": "12.2 LTS aarch64 (includes Apache Spark 3.3.2, Scala 2.12)",
+            },
+        ]
+        mocker.patch.object(
+            ClusterApi, "spark_versions", return_value={"versions": versions}
+        )
+
+        first_result = _get_newest_spark_version(mock_api_client)
+
+        versions = [
+            {
+                "key": "10.4.x-aarch64-scala2.12",
+                "name": "10.4 LTS aarch64 (includes Apache Spark 3.2.1, Scala 2.12)",
+            },
+        ]
+        mocker.patch.object(
+            ClusterApi, "spark_versions", return_value={"versions": versions}
+        )
+
+        second_result = _get_newest_spark_version(mock_api_client)
+        assert first_result == second_result
+
+
+class TestGetExistingClusterId:
+    def test_valid_input_returns_cluster_id(self, mocker, mock_api_client):
+        """
+        Tests that providing a valid client and cluster name returns the cluster ID.
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+        mocker.patch.object(
+            ClusterApi,
+            "list_clusters",
+            return_value={
+                "clusters": [{"cluster_name": "test_cluster", "cluster_id": "12345"}]
+            },
+        )
+
+        result = _get_existing_cluster_id(mock_api_client, "test_cluster")
+
+        assert result == "12345"
+
+    def test_invalid_input_raises_exception(self, mocker, mock_api_client):
+        """
+        Tests that providing an invalid cluster name raises an exception.
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+        mocker.patch.object(
+            ClusterApi,
+            "list_clusters",
+            return_value={
+                "clusters": [{"cluster_name": "test_cluster", "cluster_id": "12345"}]
+            },
+        )
+
+        with pytest.raises(ValidationError):
+            _get_existing_cluster_id(client=mock_api_client, cluster_name="")
+
+        with pytest.raises(ValidationError):
+            _get_existing_cluster_id(client=mock_api_client, cluster_name=123)
+
+    def test_nonexistent_cluster_returns_none(self, mocker, mock_api_client):
+        """
+        Tests that providing a non-existent cluster name returns None.
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+        mocker.patch.object(
+            ClusterApi,
+            "list_clusters",
+            return_value={
+                "clusters": [{"cluster_name": "test_cluster", "cluster_id": "12345"}]
+            },
+        )
+
+        result = _get_existing_cluster_id(mock_api_client, "nonexistent_cluster")
+
+        assert result is None
+
+    def test_caching_behavior_get_existing_cluster_id(self, mocker, mock_api_client):
+        """
+        Tests that the function has caching behavior.
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+
+        clusters = [{"cluster_name": "first_cluster", "cluster_id": "12345"}]
+        mocker.patch.object(
+            ClusterApi, "list_clusters", return_value={"versions": clusters}
+        )
+
+        first_result = _get_existing_cluster_id(mock_api_client, "first_cluster")
+
+        clusters = [{"cluster_name": "second_cluster", "cluster_id": "67890"}]
+        mocker.patch.object(
+            ClusterApi, "list_clusters", return_value={"versions": clusters}
+        )
+
+        second_result = _get_existing_cluster_id(mock_api_client, "first_cluster")
+        assert first_result == second_result
+
+
+class TestJobSettings:
+    def test_load_job_settings_from_valid_JSON_file(self, mocker, mock_api_client):
+        """
+        Tests that job settings can be loaded from a valid JSON file.
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+
+        job_settings = {"name": "test_job", "timeout_seconds": 60}
+        job_settings_path = "tests/data/job_settings.json"
+        with open(job_settings_path, "w") as f:
+            json.dump(job_settings, f)
+
+        job = JobSettings(mock_api_client)
+        loaded_settings = job.load_job_settings(settings_json=job_settings_path)
+
+        assert loaded_settings == job_settings
+
+    def test_load_job_settings_from_invalid_JSON_string(self, mocker, mock_api_client):
+        """
+        Tests that the job settings cannot be loaded from an invalid JSON string.
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+
+        invalid_json = "{'name': 'test_job', 'timeout_seconds': 60}"
+        job = JobSettings(mock_api_client)
+
+        with pytest.raises(RuntimeError):
+            _ = job.load_job_settings(settings_json=invalid_json)
+
+    def test_load_job_settings_default_when_JSON_invalid(self, mocker, mock_api_client):
+        """
+        Tests that the job settings cannot be loaded from an invalid JSON string.
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+
+        invalid_json = "{'name': 'test_job', 'timeout_seconds': 60}"
+        default_settings = {"name": "default_job", "timeout_seconds": 30}
+
+        mocker.patch.object(
+            JobSettings, "_get_default_job_settings", return_value=default_settings
+        )
+        job = JobSettings(mock_api_client)
+
+        job_settings = job.load_job_settings(
+            settings_json=invalid_json, default_settings="pipeline"
+        )
+        assert job_settings == default_settings
+
+    def test_load_default_job_settings_for_invalid_job_type(
+        self, mocker, mock_api_client
+    ):
+        """
+        Tests that default job settings cannot be loaded for an invalid job type.
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+        job = JobSettings(mock_api_client)
+
+        with pytest.raises(ValueError):
+            job.load_job_settings(default_settings="invalid_job_type")
+
+    def test_validate_databricks_api_client_with_invalid_client(self):
+        """
+        Tests that the ApiClient input is properly validated with an invalid client.
+        """
+        client = "invalid client"
+
+        with pytest.raises(TypeError):
+            validate_databricks_api_client(client)
+
+
+class TestJobsWrapper:
+    def test_get_or_create_release_job_new(self, mocker, mock_api_client):
+        """
+        Tests that get_or_create_release_job creates a new release job when one does
+        not exist.
+        """
+        job_settings = {"name": "test_job", "job_type": "python"}
+
+        jobs_wrapper = JobsWrapper(mock_api_client)
+        jobs_wrapper.get_or_create_job = mocker.Mock(return_value="12345")
+        mocker.patch.object(JobSettings, "load_job_settings", return_value=job_settings)
+
+        job_id = jobs_wrapper.get_or_create_release_job()
+
+        assert job_id == "12345"
+        jobs_wrapper.get_or_create_job.assert_called_once_with(job_settings)
+
+    def test_get_or_create_job_existing(self, mocker, mock_api_client):
+        """
+        Tests that get_or_create_job retrieves an existing job when one exists and
+        resets it to current settings.
+        """
+        mocker.patch.object(JobsApi, "reset_job", return_value=None)
+
+        job_settings = {"name": "test_job", "job_type": "python"}
+
+        jobs_wrapper = JobsWrapper(mock_api_client)
+        jobs_wrapper._get_job = mocker.Mock(return_value="12345")
+
+        job_id = jobs_wrapper.get_or_create_job(job_settings)
+
+        assert job_id == "12345"
+        jobs_wrapper._get_job.assert_called_once_with("test_job")
+        jobs_wrapper.jobs_api.reset_job.assert_called_once_with(
+            {"job_id": "12345", "new_settings": job_settings}
+        )
+
+    def test_run_job(self, mocker, mock_api_client):
+        """
+        Tests that run_job runs a job and returns its status and URL.
+        """
+        jobs_wrapper = JobsWrapper(mock_api_client)
+
+        jobs_wrapper.jobs_api.run_now = mocker.Mock(return_value={"run_id": "67890"})
+        jobs_wrapper.runs_api.get_run = mocker.Mock(
+            side_effect=[
+                {
+                    "state": {"life_cycle_state": "RUNNING"},
+                    "run_page_url": "http://test.com",
+                },
+                {
+                    "state": {
+                        "life_cycle_state": "TERMINATED",
+                        "result_state": "SUCCESS",
+                    },
+                    "run_page_url": "http://test.com",
+                },
+            ]
+        )
+
+        status, url = jobs_wrapper.run_job("12345")
+
+        assert status == "SUCCESS"
+        assert url == "http://test.com"
+        jobs_wrapper.jobs_api.run_now.assert_called_once_with(
+            job_id="12345",
+            jar_params=None,
+            notebook_params=None,
+            python_params=None,
+            spark_submit_params=None,
+        )
+        jobs_wrapper.runs_api.get_run.assert_has_calls(
+            [mocker.call("67890"), mocker.call("67890")]
+        )
+
+    def test_get_or_create_job_new(self, mocker, mock_api_client):
+        """
+        Tests that get_or_create_job creates a new job when one does not exist.
+        """
+        mocker.patch.object(JobsApi, "list_jobs", return_value={"jobs": []})
+        mocker.patch.object(JobsApi, "create_job", return_value={"job_id": 1234})
+
+        job_settings = {"name": "test_job"}
+
+        jobs_wrapper = JobsWrapper(mock_api_client)
+        job_id = jobs_wrapper.get_or_create_job(job_settings)
+
+        assert job_id == 1234
+        jobs_wrapper.jobs_api.create_job.assert_called_once_with(job_settings)
+
+    def test_delete_job(self, mocker, mock_api_client):
+        """
+        Tests that delete_job deletes a job.
+        """
+        mocker.patch.object(
+            JobsApi, "get_job", return_value={"settings": {"name": "test_job"}}
+        )
+        mocker.patch.object(JobsApi, "delete_job", return_value=None)
+
+        job_id = "test_job_id"
+
+        jobs_wrapper = JobsWrapper(mock_api_client)
+        jobs_wrapper.delete_job(job_id)
+
+        jobs_wrapper.jobs_api.delete_job.assert_called_once_with(job_id=job_id)
+
+    def test_get_or_create_job_invalid_settings(self, mock_api_client):
+        """
+        Tests that an error is raised when invalid job settings are provided to
+        get_or_create_job.
+        """
+        job_settings = {"invalid_field": "invalid_value"}
+
+        with pytest.raises(ValueError):
+            JobsWrapper(mock_api_client).get_or_create_job(job_settings)

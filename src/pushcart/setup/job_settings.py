@@ -1,13 +1,13 @@
 import json
 import logging
 import operator
-from functools import cache, lru_cache
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Union
 
 from databricks_cli.clusters.api import ClusterApi
 from databricks_cli.sdk.api_client import ApiClient
-from pydantic import Json, constr, dataclasses, validator
+from pydantic import Json, constr, dataclasses, validate_arguments, validator
 
 from pushcart.validation.common import (
     PydanticArbitraryTypesConfig,
@@ -15,9 +15,21 @@ from pushcart.validation.common import (
 )
 
 
-@cache
+@lru_cache(maxsize=1)
+@validate_arguments(config=dict(arbitrary_types_allowed=True))
 def _get_smallest_cluster_node_type(client: ApiClient = None) -> str:
+    """
+    Retrieve the smallest Photon-capable cluster node type from a Databricks cluster
+    using the Databricks CLI and SDK APIs. The function caches the result to improve
+    performance.
+
+    Inputs:
+    - client: an instance of the ApiClient class from the Databricks CLI SDK.
+    """
     cluster_api = ClusterApi(client)
+
+    log = logging.getLogger(__name__)
+    log.setLevel(logging.INFO)
 
     node_types = [
         t
@@ -27,31 +39,77 @@ def _get_smallest_cluster_node_type(client: ApiClient = None) -> str:
         and t["photon_driver_capable"] is True
         and t["photon_worker_capable"] is True
     ]
-    return sorted(
+
+    if not node_types:
+        log.error("No Photon-capable node type could be selected")
+        return None
+
+    node = sorted(
         node_types, key=operator.itemgetter("num_cores", "memory_mb", "num_gpus")
     )[0]["node_type_id"]
+    log.info(f"Using node type ID: {node}")
+
+    return node
 
 
-@cache
+@lru_cache(maxsize=1)
+@validate_arguments(config=dict(arbitrary_types_allowed=True))
 def _get_newest_spark_version(client: ApiClient = None) -> str:
+    """
+    Retrieve the newest version of Apache Spark that is not labeled as "ML" and is an
+    LTS version. The function uses the Databricks CLI and API to retrieve and filter
+    the available Spark versions. The function caches the result to improve performance
+
+    Inputs:
+    - client: an instance of the ApiClient class from the Databricks CLI SDK.
+
+    Additional aspects:
+    - The function assumes that there is at least one Spark version that meets the
+      specified criteria, otherwise it will raise an exception.
+    """
     cluster_api = ClusterApi(client)
+
+    log = logging.getLogger(__name__)
+    log.setLevel(logging.INFO)
 
     spark_versions = [
         v
         for v in cluster_api.spark_versions()["versions"]
         if "ML" not in v["name"] and "LTS" in v["name"]
     ]
-    return sorted(
+
+    if not spark_versions:
+        log.error(f"No spark versions.")
+        return None
+
+    version = sorted(
         spark_versions,
         key=lambda x: float(x["name"].split(" LTS ")[0]),
         reverse=True,
     )[0]["key"]
+    log.info(f"Using Spark version: {version}")
+
+    return version
 
 
 @lru_cache(maxsize=50)
+@validate_arguments(config=dict(arbitrary_types_allowed=True))
 def _get_existing_cluster_id(
     client: ApiClient = None, cluster_name: constr(min_length=1, strict=True) = None
 ) -> str:
+    """
+    Retrieve the ID of an existing Databricks cluster by its name using the Databricks
+    API. The function caches the result to improve performance
+
+    Inputs:
+    - client: an instance of the ApiClient class from the Databricks CLI SDK
+    - `cluster_name`: the name of the cluster to retrieve the ID for
+
+    Additional aspects:
+    - The `constr` class from the `pydantic` library is used to enforce input
+    validation for the `cluster_name` input, requiring a string with a minimum length
+    of 1 and no leading or trailing whitespace.
+    """
     cluster_api = ClusterApi(client)
 
     log = logging.getLogger(__name__)
@@ -61,7 +119,7 @@ def _get_existing_cluster_id(
     clusters_filtered = [c for c in clusters if c["cluster_name"] == cluster_name]
 
     if not clusters_filtered:
-        log.warning(f"Cluster not found: {cluster_name}")
+        log.error(f"Cluster not found: {cluster_name}")
         return None
 
     cluster_id = clusters_filtered[0]["cluster_id"]
@@ -72,17 +130,32 @@ def _get_existing_cluster_id(
 
 @dataclasses.dataclass(config=PydanticArbitraryTypesConfig)
 class JobSettings:
+    """
+    Manages job settings for Databricks jobs. It provides methods for loading job
+    settings from a JSON file or string, as well as for retrieving default job settings
+    for checkpoint, pipeline, and release jobs.
+
+    Fields:
+    - client: instance of ApiClient used for interacting with the Databricks API
+    - log: logger instance used for logging messages during job settings loading and
+      validation
+    """
+
     client: ApiClient
 
     @validator("client")
     @classmethod
     def check_api_client(cls, value):
+        """
+        Validator method that ensures the provided ApiClient is valid
+        """
         return validate_databricks_api_client(value)
 
     def __post_init_post_parse__(self):
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.INFO)
 
+    @validate_arguments(config=dict(arbitrary_types_allowed=True))
     def load_job_settings(
         self,
         settings_json: Union[Json[Any], Path] = None,
@@ -90,26 +163,44 @@ class JobSettings:
             min_length=1, strict=True, regex=r"^(checkpoint|pipeline|release)$"
         ) = None,
     ) -> dict:
+        """
+        Load job settings from a JSON file or string, or retrieve default job settings
+        if none are provided
+        """
         job_settings = None
 
         if settings_json:
-            job_settings = self._get_json_from_string() or self._get_json_from_file()
+            job_settings = self._get_json_from_string(
+                settings_json
+            ) or self._get_json_from_file(settings_json)
 
         if not job_settings:
             self.log.info("Creating release job using default settings")
+
+            if settings_json and not default_settings:
+                raise RuntimeError(
+                    "Failed to load provided job settings, and default settings were not specified."
+                )
+
             job_settings = self._get_default_job_settings(default_settings)
 
         return job_settings
 
-    def _get_json_from_string(self) -> dict:
+    def _get_json_from_string(self, settings_json: Any) -> dict:
+        """
+        Helper method for parsing a JSON string into a dictionary
+        """
         try:
-            return json.loads(self.settings_json)
+            return json.loads(settings_json)
         except (json.JSONDecodeError, TypeError):
             return None
 
-    def _get_json_from_file(self) -> dict:
+    def _get_json_from_file(self, settings_json: Any) -> dict:
+        """
+        Helper method for loading a JSON file into a dictionary
+        """
         try:
-            if json_path := self.settings_json.resolve().as_posix():
+            if json_path := settings_json.resolve().as_posix():
                 with open(json_path, "r") as json_file:
                     return json.load(json_file)
         except (
@@ -127,6 +218,10 @@ class JobSettings:
             min_length=1, strict=True, regex=r"^(checkpoint|pipeline|release)$"
         ),
     ) -> dict:
+        """
+        Helper method for retrieving default job settings for checkpoint, pipeline,
+        and release jobs
+        """
         settings_map = {
             "checkpoint": _get_default_checkpoint_job_settings,
             "pipeline": _get_default_pipeline_job_settings,

@@ -2,6 +2,10 @@ from databricks_cli.sdk.api_client import ApiClient
 
 
 def validate_databricks_api_client(client: ApiClient = None) -> ApiClient:
+    """
+    Validate the input parameter 'client' of type 'ApiClient' and ensure that it has
+    been properly initialized before returning it.
+    """
     if not client:
         raise ValueError("ApiClient must have a value")
 
