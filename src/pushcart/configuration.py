@@ -1,8 +1,56 @@
+import json
+import logging
+from collections import defaultdict
 from itertools import groupby
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from pydantic import Field, FilePath, constr, dataclasses, root_validator, validator
+import tomli
+import yaml
+from pydantic import (
+    Field,
+    FilePath,
+    constr,
+    dataclasses,
+    root_validator,
+    validate_arguments,
+    validator,
+)
+
+
+@validate_arguments
+def get_config_from_file(settings_path: Path) -> dict | None:
+    """
+    Load a configuration file into a dictionary. Supported formats are JSON, YAML, and TOML.
+
+    Args:
+        settings_path (Path): The path to the configuration file.
+
+    Returns:
+        dict | None: The configuration data as a dictionary, or None if an error occurred.
+    """
+    loaders = defaultdict(
+        lambda: None, {".json": json.load, ".toml": tomli.load, ".yaml": yaml.safe_load}
+    )
+
+    log = logging.getLogger(__name__)
+    log.setLevel(logging.INFO)
+
+    try:
+        if settings_path.exists():
+            ext = settings_path.suffix
+            with settings_path.open("r") as settings_file:
+                return loaders[ext](settings_file)
+    except FileNotFoundError:
+        log.warning(f"File not found: {settings_path.as_posix()}")
+    except OSError:
+        log.warning(f"Could not open file: {settings_path.as_posix()}")
+    except (json.JSONDecodeError, yaml.error.YAMLError, tomli.TOMLDecodeError):
+        log.warning(f"File is not valid: {settings_path.as_posix()}")
+    except TypeError:
+        log.warning(f"Unsupported file type: {settings_path.as_posix()}")
+    except RuntimeError as e:
+        log.warning(f"Skipping: {settings_path.as_posix()} Encountered: {e}")
 
 
 def _get_multiple_validations_with_same_rule(validations):

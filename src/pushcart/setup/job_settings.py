@@ -1,16 +1,14 @@
-import json
 import logging
 import operator
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-import tomli
-import yaml
 from databricks_cli.clusters.api import ClusterApi
 from databricks_cli.sdk.api_client import ApiClient
 from pydantic import constr, dataclasses, validate_arguments, validator
 
+from pushcart.configuration import get_config_from_file
 from pushcart.validation.common import (
     PydanticArbitraryTypesConfig,
     validate_databricks_api_client,
@@ -172,7 +170,7 @@ class JobSettings:
         job_settings = None
 
         if settings_path:
-            job_settings = self._get_settings_from_file(settings_path)
+            job_settings = get_config_from_file(settings_path)
 
         if not job_settings:
             self.log.info("Creating job using default settings")
@@ -185,27 +183,6 @@ class JobSettings:
             job_settings = self._get_default_job_settings(default_settings)
 
         return job_settings
-
-    def _get_settings_from_file(self, settings_path: Path) -> dict:
-        """
-        Helper method for loading a settings file into a dictionary. JSON, YAML and
-        TOML supported.
-        """
-        loaders = {".json": json.load, ".toml": tomli.load, ".yaml": yaml.load}
-
-        try:
-            if settings_path_str := settings_path.resolve().as_posix():
-                ext = settings_path.suffix
-                with open(settings_path_str, "r") as settings_file:
-                    return loaders[ext](settings_file)
-        except (
-            FileNotFoundError,
-            json.JSONDecodeError,
-            OSError,
-            RuntimeError,
-            TypeError,
-        ):
-            return None
 
     def _get_default_job_settings(
         self,

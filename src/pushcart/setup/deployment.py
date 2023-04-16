@@ -1,11 +1,11 @@
 import logging
 from textwrap import dedent
-from typing import Any, Optional, Union
+from typing import Optional
 
 import click
 from databricks_cli.configure.config import provide_api_client
 from databricks_cli.sdk.api_client import ApiClient
-from pydantic import FilePath, HttpUrl, Json, constr, dataclasses, validator
+from pydantic import FilePath, HttpUrl, constr, dataclasses, validator
 
 from pushcart.setup.jobs_wrapper import JobsWrapper
 from pushcart.setup.repos_wrapper import ReposWrapper
@@ -24,7 +24,7 @@ class Deployment:
     - git_branch: the name of the Git branch
     - dbr_repo_user: the name of the repository user in Databricks (default is "pushcart")
     - git_provider: the name of the Git provider (optional)
-    - settings_json: the release job settings JSON (optional)
+    - job_settings_file: the release job settings file (optional)
     """
 
     git_url: HttpUrl
@@ -39,7 +39,7 @@ class Deployment:
             regex=r"^(gitHub|bitbucketCloud|gitLab|azureDevOpsServices|gitHubEnterprise|bitbucketServer|gitLabEnterpriseEdition|awsCodeCommit)$",
         )
     ] = None
-    settings_json: Optional[Union[FilePath, Json[Any]]] = None
+    job_settings_file: Optional[FilePath] = None
 
     @validator("git_branch")
     @classmethod
@@ -61,7 +61,7 @@ class Deployment:
           - Git Provider: {self.git_provider}
           - Git URL: {self.git_url}
           - Git Branch: {self.git_branch}
-          - Release Job Settings JSON: {self.settings_json}
+          - Release Job Settings JSON: {self.job_settings_file}
         """
         self.log.info(dedent(init_log))
 
@@ -80,7 +80,7 @@ class Deployment:
         )
         self.repos_api.update(self.git_branch)
 
-        job_id = self.jobs_api.get_or_create_release_job(self.settings_json)
+        job_id = self.jobs_api.get_or_create_release_job(self.job_settings_file)
         job_status, run_url = self.jobs_api.run_job(job_id)
 
         log_message = f"Run {job_status} for {job_id}: {run_url}"
@@ -101,22 +101,20 @@ class Deployment:
 @click.option("--git-provider", "-p", help="Name of the Git provider (optional)")
 @click.option("--git-url", "-u", help="Git URL holding pushcart configurations")
 @click.option("--git-branch", "-b", help="Name of the Git branch to deploy from")
-@click.option(
-    "--release-settings-json", "-j", help="Release job settings JSON (optional)"
-)
+@click.option("--job-settings-file", "-j", help="Release job settings file (optional)")
 def deploy(
     repos_user: str,
     git_provider: str,
     git_url: str,
     git_branch: str,
-    release_settings_json: str,
+    job_settings_file: str,
 ):
     d = Deployment(
         repos_user=repos_user,
         git_provider=git_provider,
         git_url=git_url,
         git_branch=git_branch,
-        settings_json=release_settings_json,
+        job_settings_file=job_settings_file,
     )
     d.deploy()
 

@@ -10,7 +10,6 @@ from pydantic.error_wrappers import ValidationError
 
 from pushcart.setup.job_settings import (
     JobSettings,
-    _get_default_release_job_settings,
     _get_existing_cluster_id,
     _get_newest_spark_version,
     _get_smallest_cluster_node_type,
@@ -476,7 +475,9 @@ class TestJobSettings:
         mocker.patch.object(
             JobSettings, "_get_default_job_settings", return_value=default_settings
         )
-        mocker.patch.object(JobSettings, "_get_settings_from_file", return_value=None)
+        mocker.patch(
+            "pushcart.setup.job_settings.get_config_from_file", return_value=None
+        )
 
         job_settings = JobSettings(mock_api_client)
 
@@ -493,7 +494,9 @@ class TestJobSettings:
         and no default job settings provided
         """
         mocker.patch.object(ClusterApi, "__init__", return_value=None)
-        mocker.patch.object(JobSettings, "_get_settings_from_file", return_value=None)
+        mocker.patch(
+            "pushcart.setup.job_settings.get_config_from_file", return_value=None
+        )
 
         job_settings_path = "tests/data/invalid_job_settings.json"
 

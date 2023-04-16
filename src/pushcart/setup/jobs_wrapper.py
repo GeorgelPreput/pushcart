@@ -1,12 +1,12 @@
 import logging
 from pathlib import Path
 from time import sleep
-from typing import Any, Tuple, Union
+from typing import Optional, Tuple
 
 from databricks_cli.jobs.api import JobsApi
 from databricks_cli.runs.api import RunsApi
 from databricks_cli.sdk.api_client import ApiClient
-from pydantic import Json, dataclasses, validate_arguments, validator
+from pydantic import dataclasses, validate_arguments, validator
 
 from pushcart.setup.job_settings import JobSettings
 from pushcart.validation.common import (
@@ -51,9 +51,7 @@ class JobsWrapper:
         self.runs_api = RunsApi(self.client)
 
     @validate_arguments
-    def get_or_create_release_job(
-        self, settings_json: Union[Json[Any], Path] = None
-    ) -> str:
+    def get_or_create_release_job(self, settings_json: Optional[Path] = None) -> str:
         """
         Retrieves or creates a release job using the provided job settings
         """
