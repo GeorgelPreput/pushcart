@@ -99,15 +99,17 @@ class Deployment:
     help="Databricks Repos user name (default is 'pushcart')",
 )
 @click.option("--git-provider", "-p", help="Name of the Git provider (optional)")
-@click.option("--git-url", "-u", help="Git URL holding pushcart configurations")
+@click.option("--git-url", "-g", help="Git URL holding pushcart configurations")
 @click.option("--git-branch", "-b", help="Name of the Git branch to deploy from")
 @click.option("--job-settings-file", "-j", help="Release job settings file (optional)")
+@click.option("--profile", "-p", help="Databricks CLI profile to use (optional)")
 def deploy(
     repos_user: str,
-    git_provider: str,
     git_url: str,
     git_branch: str,
-    job_settings_file: str,
+    git_provider: str = None,
+    job_settings_file: str = None,
+    profile: str = None,  # Derived from context by @provide_api_client
 ):
     d = Deployment(
         repos_user=repos_user,
