@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 from databricks_cli.clusters.api import ClusterApi
@@ -7,9 +8,9 @@ from databricks_cli.repos.api import ReposApi
 from databricks_cli.sdk.api_client import ApiClient
 from pydantic.error_wrappers import ValidationError
 
-from pushcart.setup.deployment import Deployment
 from pushcart.setup.job_settings import (
     JobSettings,
+    _get_default_release_job_settings,
     _get_existing_cluster_id,
     _get_newest_spark_version,
     _get_smallest_cluster_node_type,
@@ -37,8 +38,7 @@ class TestReposWrapper:
 
         repo_id = ReposWrapper(mock_api_client).get_or_create_repo(
             repo_user="test_user",
-            git_url="https://github.com/test_user/test_repo",
-            git_repo="test_repo",
+            git_url="https://github.com/test_user/test_repo.git",
         )
         assert repo_id == "456"
 
@@ -51,8 +51,7 @@ class TestReposWrapper:
 
         repo_id = ReposWrapper(mock_api_client).get_or_create_repo(
             repo_user="test_user",
-            git_url="https://github.com/test_user/test_repo",
-            git_repo="test_repo",
+            git_url="https://github.com/test_user/test_repo.git",
         )
         assert repo_id == "123"
 
@@ -70,7 +69,7 @@ class TestReposWrapper:
         is not specified and cannot be detected from url.
         """
         with pytest.raises(ValueError) as e:
-            ReposWrapper(mock_api_client).detect_git_provider("https://example.com")
+            ReposWrapper(mock_api_client)._detect_git_provider("https://example.com")
 
         assert (
             "Could not detect Git provider from URL. Please specify git_provider explicitly."
@@ -83,7 +82,7 @@ class TestReposWrapper:
         provider from a given url.
         """
         repos_wrapper = ReposWrapper(mock_api_client)
-        git_provider = repos_wrapper.detect_git_provider(
+        git_provider = repos_wrapper._detect_git_provider(
             "https://github.com/user/repo.git"
         )
         assert git_provider == "gitHub"
@@ -95,9 +94,7 @@ class TestReposWrapper:
         """
         repos_wrapper = ReposWrapper(mock_api_client)
         with pytest.raises(ValueError):
-            repos_wrapper.get_or_create_repo(
-                "", "https://github.com/user/repo.git", "repo"
-            )
+            repos_wrapper.get_or_create_repo("", "https://github.com/user/repo.git")
 
     def test_update_invalid_input(self, mock_api_client):
         """
@@ -452,7 +449,7 @@ class TestGetExistingClusterId:
 
 
 class TestJobSettings:
-    def test_load_job_settings_from_valid_JSON_file(self, mocker, mock_api_client):
+    def test_load_job_settings_from_valid_file(self, mocker, mock_api_client):
         """
         Tests that job settings can be loaded from a valid JSON file.
         """
@@ -464,40 +461,46 @@ class TestJobSettings:
             json.dump(job_settings, f)
 
         job = JobSettings(mock_api_client)
-        loaded_settings = job.load_job_settings(settings_json=job_settings_path)
+        loaded_settings = job.load_job_settings(settings_path=Path(job_settings_path))
 
         assert loaded_settings == job_settings
 
-    def test_load_job_settings_from_invalid_JSON_string(self, mocker, mock_api_client):
+    def test_load_job_settings_default_when_file_invalid(self, mocker, mock_api_client):
         """
-        Tests that the job settings cannot be loaded from an invalid JSON string.
+        Tests that the default settings are returned if the given file could not be
+        loaded
         """
-        mocker.patch.object(ClusterApi, "__init__", return_value=None)
-
-        invalid_json = "{'name': 'test_job', 'timeout_seconds': 60}"
-        job = JobSettings(mock_api_client)
-
-        with pytest.raises(RuntimeError):
-            _ = job.load_job_settings(settings_json=invalid_json)
-
-    def test_load_job_settings_default_when_JSON_invalid(self, mocker, mock_api_client):
-        """
-        Tests that the job settings cannot be loaded from an invalid JSON string.
-        """
-        mocker.patch.object(ClusterApi, "__init__", return_value=None)
-
-        invalid_json = "{'name': 'test_job', 'timeout_seconds': 60}"
         default_settings = {"name": "default_job", "timeout_seconds": 30}
 
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
         mocker.patch.object(
             JobSettings, "_get_default_job_settings", return_value=default_settings
         )
+        mocker.patch.object(JobSettings, "_get_settings_from_file", return_value=None)
+
+        job_settings = JobSettings(mock_api_client)
+
+        result = job_settings.load_job_settings(
+            settings_path="tests/data/job_settings.json", default_settings="pipeline"
+        )
+        assert result == default_settings
+
+    def test_load_job_settings_when_file_invalid_and_no_default(
+        self, mocker, mock_api_client
+    ):
+        """
+        Tests that the job settings cannot be loaded when the given file cannot be read
+        and no default job settings provided
+        """
+        mocker.patch.object(ClusterApi, "__init__", return_value=None)
+        mocker.patch.object(JobSettings, "_get_settings_from_file", return_value=None)
+
+        job_settings_path = "tests/data/invalid_job_settings.json"
+
         job = JobSettings(mock_api_client)
 
-        job_settings = job.load_job_settings(
-            settings_json=invalid_json, default_settings="pipeline"
-        )
-        assert job_settings == default_settings
+        with pytest.raises(RuntimeError):
+            _ = job.load_job_settings(settings_path=job_settings_path)
 
     def test_load_default_job_settings_for_invalid_job_type(
         self, mocker, mock_api_client

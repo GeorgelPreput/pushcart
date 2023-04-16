@@ -6,7 +6,7 @@ from typing import Optional
 
 from databricks_cli.repos.api import ReposApi
 from databricks_cli.sdk.api_client import ApiClient
-from pydantic import HttpUrl, constr, dataclasses, validator
+from pydantic import HttpUrl, constr, dataclasses, validate_arguments, validator
 
 from pushcart.validation.common import (
     PydanticArbitraryTypesConfig,
@@ -46,7 +46,8 @@ class ReposWrapper:
         self.repo_id = None
 
     @staticmethod
-    def detect_git_provider(repo_url):
+    @validate_arguments
+    def _detect_git_provider(repo_url: str) -> str:
         """
         Detects the Git provider from a given URL
         """
@@ -70,11 +71,11 @@ class ReposWrapper:
             "Could not detect Git provider from URL. Please specify git_provider explicitly."
         )
 
+    @validate_arguments
     def get_or_create_repo(
         self,
         repo_user: constr(min_length=1, strict=True, regex=r"^[^'\"]*$"),
         git_url: HttpUrl,
-        git_repo: constr(min_length=1, strict=True, regex=r"^[^'\"]*$"),
         git_provider: Optional[
             constr(
                 min_length=1,
@@ -84,15 +85,17 @@ class ReposWrapper:
         ] = None,
     ) -> str:
         """
-        Gets or creates a repository with a given user, Git URL, Git repository name,
-        and Git provider (if not detected from URL)
+        Gets or creates a repository with a given user, Git URL and Git provider (if
+        not detected from URL)
         """
 
         if not git_provider:
             self.log.warning(
                 "No Git provider specified. Attempting to guess based on URL."
             )
-            git_provider = self.detect_git_provider(git_url)
+            git_provider = self._detect_git_provider(git_url)
+
+        git_repo = git_url.split("/")[-1].replace(".git", "")
 
         repo_path = Path(os.path.join("/", "Repos", repo_user, git_repo)).as_posix()
         try:
@@ -110,6 +113,7 @@ class ReposWrapper:
 
         return self.repo_id
 
+    @validate_arguments
     def update(self, git_branch: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")):
         """
         Updates the Databricks repository with a new branch

@@ -3,8 +3,8 @@ from textwrap import dedent
 from typing import Any, Optional, Union
 
 import click
-from databricks_cli.configure.config import _get_api_client
-from databricks_cli.configure.provider import DatabricksConfig
+from databricks_cli.configure.config import provide_api_client
+from databricks_cli.sdk.api_client import ApiClient
 from pydantic import FilePath, HttpUrl, Json, constr, dataclasses, validator
 
 from pushcart.setup.jobs_wrapper import JobsWrapper
@@ -15,26 +15,23 @@ from pushcart.setup.repos_wrapper import ReposWrapper
 class Deployment:
     """
     The Deployment class is responsible for deploying the pushcart release job from a
-    Git repository. It gets or creates a repository, updating the repository with a new
-    branch, creates a release job, runs it, and logs the job status.
+    Git repository. Using an existing Databricks CLI configuration, it gets or creates
+    a repository in Databricks Repos, updating it with a new branch, creates a release
+    job, runs it, and logs the job status.
 
     Fields:
-    - workspace: the URL of the Databricks workspace
-    - token: the authentication token for the Databricks workspace
     - git_url: the URL of the Git repository
-    - git_repo: the name of the Git repository
     - git_branch: the name of the Git branch
-    - repo_user: the name of the repository user (default is "main")
+    - dbr_repo_user: the name of the repository user in Databricks (default is "pushcart")
     - git_provider: the name of the Git provider (optional)
-    - settings_json: the job settings JSON (optional)
+    - settings_json: the release job settings JSON (optional)
     """
 
-    workspace: HttpUrl
-    token: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")
     git_url: HttpUrl
-    git_repo: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")
     git_branch: constr(min_length=1, strict=True, regex=r"^[^'\"]*$")
-    repo_user: Optional[constr(min_length=1, strict=True, regex=r"^[^'\"]*$")] = "main"
+    repos_user: Optional[
+        constr(min_length=1, strict=True, regex=r"^[^'\"]*$")
+    ] = "pushcart"
     git_provider: Optional[
         constr(
             min_length=1,
@@ -52,24 +49,23 @@ class Deployment:
         """
         return value.replace("refs/heads/", "")
 
-    def __post_init_post_parse__(self):
+    @provide_api_client
+    def __post_init_post_parse__(self, api_client: ApiClient):
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.INFO)
 
         init_log = f"""
           Using deployment parameters:
-          - Databricks Workspace: {self.workspace}
-          - Token: {self.token[:5]}***** [REDACTED]
+          - Databricks Workspace: {api_client.url}
+
           - Git Provider: {self.git_provider}
           - Git URL: {self.git_url}
-          - Git Repository: {self.git_repo}
           - Git Branch: {self.git_branch}
-          - Settings JSON: {self.settings_json}
+          - Release Job Settings JSON: {self.settings_json}
         """
         self.log.info(dedent(init_log))
 
-        config = DatabricksConfig.from_token(self.workspace, self.token, False)
-        client = _get_api_client(config)
+        client = api_client
         self.repos_api = ReposWrapper(client)
         self.jobs_api = JobsWrapper(client)
 
@@ -80,7 +76,7 @@ class Deployment:
         logging the job status
         """
         self.repos_api.get_or_create_repo(
-            self.repo_user, self.git_url, self.git_repo, self.git_provider
+            self.repos_user, self.git_url, self.git_provider
         )
         self.repos_api.update(self.git_branch)
 
@@ -97,31 +93,28 @@ class Deployment:
 
 
 @click.command()
-@click.option("--workspace", "-w")
-@click.option("--token", "-t")
-@click.option("--dbr-repos-user", "-n")
-@click.option("--git-provider", "-p")
-@click.option("--git-url", "-u")
-@click.option("--git-repo", "-r")
-@click.option("--git-branch", "-b")
-@click.option("--release-settings-json", "-j")
+@click.option(
+    "--repos-user",
+    "-u",
+    help="Databricks Repos user name (default is 'pushcart')",
+)
+@click.option("--git-provider", "-p", help="Name of the Git provider (optional)")
+@click.option("--git-url", "-u", help="Git URL holding pushcart configurations")
+@click.option("--git-branch", "-b", help="Name of the Git branch to deploy from")
+@click.option(
+    "--release-settings-json", "-j", help="Release job settings JSON (optional)"
+)
 def deploy(
-    workspace: str,
-    token: str,
-    dbr_repos_user: str,
+    repos_user: str,
     git_provider: str,
     git_url: str,
-    git_repo: str,
     git_branch: str,
     release_settings_json: str,
 ):
     d = Deployment(
-        workspace=workspace,
-        token=token,
-        repo_user=dbr_repos_user,
+        repos_user=repos_user,
         git_provider=git_provider,
         git_url=git_url,
-        git_repo=git_repo,
         git_branch=git_branch,
         settings_json=release_settings_json,
     )

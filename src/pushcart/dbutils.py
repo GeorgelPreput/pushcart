@@ -20,7 +20,12 @@ class DBUtilsSecrets:
     def __post_init_post_parse__(self):
         self.sa = SecretApi(self.client)
 
+        self.log = logging.getLogger(__name__)
+        self.log.setLevel(logging.INFO)
+
     def get(self, scope, key):
+        self.log.warning(f"Attempting to retrieve {key} from local scope {scope}")
+
         return keyring.get_password(service_name=scope, username=key)
 
     def listScopes(self) -> list:

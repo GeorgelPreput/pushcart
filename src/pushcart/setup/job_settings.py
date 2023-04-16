@@ -3,11 +3,13 @@ import logging
 import operator
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Union
+from typing import Optional
 
+import tomli
+import yaml
 from databricks_cli.clusters.api import ClusterApi
 from databricks_cli.sdk.api_client import ApiClient
-from pydantic import Json, constr, dataclasses, validate_arguments, validator
+from pydantic import constr, dataclasses, validate_arguments, validator
 
 from pushcart.validation.common import (
     PydanticArbitraryTypesConfig,
@@ -158,26 +160,24 @@ class JobSettings:
     @validate_arguments(config=dict(arbitrary_types_allowed=True))
     def load_job_settings(
         self,
-        settings_json: Union[Json[Any], Path] = None,
-        default_settings: constr(
-            min_length=1, strict=True, regex=r"^(checkpoint|pipeline|release)$"
-        ) = None,
+        settings_path: Optional[Path] = None,
+        default_settings: Optional[
+            constr(min_length=1, strict=True, regex=r"^(checkpoint|pipeline|release)$")
+        ] = None,
     ) -> dict:
         """
-        Load job settings from a JSON file or string, or retrieve default job settings
-        if none are provided
+        Load job settings from a file, or retrieve default job settings if none are
+        provided
         """
         job_settings = None
 
-        if settings_json:
-            job_settings = self._get_json_from_string(
-                settings_json
-            ) or self._get_json_from_file(settings_json)
+        if settings_path:
+            job_settings = self._get_settings_from_file(settings_path)
 
         if not job_settings:
-            self.log.info("Creating release job using default settings")
+            self.log.info("Creating job using default settings")
 
-            if settings_json and not default_settings:
+            if settings_path and not default_settings:
                 raise RuntimeError(
                     "Failed to load provided job settings, and default settings were not specified."
                 )
@@ -186,23 +186,18 @@ class JobSettings:
 
         return job_settings
 
-    def _get_json_from_string(self, settings_json: Any) -> dict:
+    def _get_settings_from_file(self, settings_path: Path) -> dict:
         """
-        Helper method for parsing a JSON string into a dictionary
+        Helper method for loading a settings file into a dictionary. JSON, YAML and
+        TOML supported.
         """
-        try:
-            return json.loads(settings_json)
-        except (json.JSONDecodeError, TypeError):
-            return None
+        loaders = {".json": json.load, ".toml": tomli.load, ".yaml": yaml.load}
 
-    def _get_json_from_file(self, settings_json: Any) -> dict:
-        """
-        Helper method for loading a JSON file into a dictionary
-        """
         try:
-            if json_path := settings_json.resolve().as_posix():
-                with open(json_path, "r") as json_file:
-                    return json.load(json_file)
+            if settings_path_str := settings_path.resolve().as_posix():
+                ext = settings_path.suffix
+                with open(settings_path_str, "r") as settings_file:
+                    return loaders[ext](settings_file)
         except (
             FileNotFoundError,
             json.JSONDecodeError,
