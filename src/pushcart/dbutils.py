@@ -18,7 +18,7 @@ class DBUtilsSecrets:
     client: ApiClient
 
     def __post_init_post_parse__(self):
-        self.sa = SecretApi(self.client)
+        self.secrets_api = SecretApi(self.client)
 
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.INFO)
@@ -29,10 +29,10 @@ class DBUtilsSecrets:
         return keyring.get_password(service_name=scope, username=key)
 
     def listScopes(self) -> list:
-        return self.sa.list_scopes()
+        return self.secrets_api.list_scopes()
 
     def list_secrets(self, scope: str) -> list:
-        return self.sa.list_secrets(scope)
+        return self.secrets_api.list_secrets(scope)
 
 
 @dataclasses.dataclass(config=PydanticArbitraryTypesConfig)
@@ -40,7 +40,7 @@ class DBUtilsFileSystem:
     client: ApiClient
 
     def __post_init_post_parse__(self):
-        self.da = DbfsApi(self.client)
+        self.dbfs_api = DbfsApi(self.client)
 
     def ls(self, path: str) -> list:
         if not path.startswith("dbfs:/"):
@@ -48,7 +48,7 @@ class DBUtilsFileSystem:
 
         dbfs_path = DbfsPath(path)
 
-        file_list = self.da.list_files(dbfs_path)
+        file_list = self.dbfs_api.list_files(dbfs_path)
 
         return [f.dbfs_path for f in file_list]
 

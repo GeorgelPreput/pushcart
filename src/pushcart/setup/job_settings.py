@@ -227,9 +227,7 @@ def _get_default_release_job_settings(client: ApiClient = None) -> dict:
                 "python_wheel_task": {
                     "package_name": "pushcart",
                     "entry_point": "pushcart-release",
-                    "named_parameters": {
-                        "--workspace-url": "https://dbc-24f62d52-15b4.cloud.databricks.com/"
-                    },
+                    "named_parameters": {"--workspace-url": client.url},
                 },
                 "job_cluster_key": "release",
                 "libraries": [{"pypi": {"package": "pushcart"}}],

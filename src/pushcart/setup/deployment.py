@@ -1,5 +1,4 @@
 import logging
-import os
 from textwrap import dedent
 from typing import Optional
 
@@ -12,6 +11,8 @@ from pydantic import FilePath, HttpUrl, constr, dataclasses, validator
 from pushcart.configuration import get_config_from_file
 from pushcart.setup.jobs_wrapper import JobsWrapper
 from pushcart.setup.repos_wrapper import ReposWrapper
+from pushcart.setup.secrets_wrapper import SecretsWrapper
+from pushcart.validation.common import HttpAuthToken
 
 
 @dataclasses.dataclass
@@ -25,9 +26,12 @@ class Deployment:
     Fields:
     - git_url: the URL of the Git repository
     - git_branch: the name of the Git branch
-    - dbr_repo_user: the name of the repository user in Databricks (default is "pushcart")
+    - dbr_repo_user: the name of the repository user in Databricks (default is
+      "pushcart")
     - git_provider: the name of the Git provider (optional)
     - job_settings_file: the release job settings file (optional)
+    - secret_scope: Databricks secret scope to use on target environment (default is
+      "pushcart")
     """
 
     git_url: HttpUrl
@@ -43,6 +47,15 @@ class Deployment:
         )
     ] = None
     job_settings_file: Optional[FilePath] = None
+    secret_scope: Optional[
+        constr(
+            strip_whitespace=True,
+            to_lower=True,
+            strict=True,
+            min_length=1,
+            regex=r"^[A-Za-z0-9\-_.]{1,128}$",
+        )
+    ] = "pushcart"
 
     @validator("git_branch")
     @classmethod
@@ -68,18 +81,33 @@ class Deployment:
         """
         self.log.info(dedent(init_log))
 
-        client = api_client
-        self.repos_api = ReposWrapper(client)
-        self.jobs_api = JobsWrapper(client)
-        self.wrkspc = WorkspaceApi(client)
+        self.client = api_client
+        self.repos_api = ReposWrapper(self.client)
+        self.jobs_api = JobsWrapper(self.client)
+        self.workspace_api = WorkspaceApi(self.client)
+        self.secrets_api = SecretsWrapper(self.client)
 
-    def deploy(self):
+    def _save_token_to_secret_scope(self, secret_scope_name: str, auth: dict) -> None:
+        """
+        Saves the Databricks token used in the deployment into a secret scope on the
+        target Databricks environment, in order to be reused by the release process
+        """
+        validated_auth = HttpAuthToken(**auth)
+        self.secrets_api.push_secrets(
+            secret_scope_name,
+            {"token": validated_auth.Authorization.removeprefix("Bearer ")},
+        )
+
+    def deploy(self) -> None:
         """
         Deploys the release job by getting or creating the repository, updating the
         repository with a new branch, creating a release job, running the job, and
-        logging the job status
+        logging the job status. Also saves the Databricks authentication token used
+        for deployment in a secret scope on the environment for reuse during release
         """
-        self.wrkspc.mkdirs(f"/Repos/{self.repos_user}")
+        self._save_token_to_secret_scope(self.secret_scope, self.client.default_headers)
+
+        self.workspace_api.mkdirs(f"/Repos/{self.repos_user}")
 
         self.repos_api.get_or_create_repo(
             self.repos_user, self.git_url, self.git_provider
