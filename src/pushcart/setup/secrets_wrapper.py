@@ -13,6 +13,16 @@ from pushcart.validation.common import (
 
 @dataclasses.dataclass(config=PydanticArbitraryTypesConfig)
 class SecretsWrapper:
+    """
+    Wrapper around the Databricks Secrets API to manage secrets in a Databricks
+    workspace. It allows creating a secret scope if it does not exist and pushing
+    secrets to the scope.
+    Fields:
+    - client: an instance of the Databricks API client used to interact with the Secrets API.
+    - log: a logger instance used to log messages.
+    - secrets_api: an instance of the SecretApi class used to interact with the Secrets API.
+    """
+
     client: ApiClient
 
     @validator("client")
@@ -40,6 +50,9 @@ class SecretsWrapper:
             regex=r"^[A-Za-z0-9\-_.]{1,128}$",
         ) = "pushcart",
     ) -> None:
+        """
+        Creates a secret scope if it does not exist in the workspace.
+        """
         scopes = self.secrets_api.list_scopes()["scopes"]
         if secret_scope_name not in [scope["name"] for scope in scopes]:
             self.secrets_api.create_scope(
@@ -71,6 +84,9 @@ class SecretsWrapper:
             str,
         ] = Field(default_factory=dict),
     ) -> None:
+        """
+        Pushes secrets to a secret scope in the workspace.
+        """
         if not secrets_dict:
             self.log.warning("No secrets to push to secret scope")
             return None
