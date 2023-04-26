@@ -1,5 +1,6 @@
 import importlib
 import inspect
+import logging
 import pkgutil
 import re
 from datetime import datetime
@@ -41,21 +42,19 @@ def _discover_classes(package_name, base_class):
 
 
 @lru_cache(maxsize=None)
-def _get_installed_packages():
-    packages = {}
-    for stage in ["sources", "transformations", "destinations"]:
-        packages[stage] = []
+def _get_installed_packages(subpackage):
+    packages = []
 
-        # Regular expression pattern to match the library names
-        pattern = re.compile(r"pushcart(?:_?-?[a-z]+)*")
+    # Regular expression pattern to match the library names
+    pattern = re.compile(r"pushcart(?:_?-?[a-z]+)*")
 
-        for pkg in pkg_resources.working_set:
-            if pattern.match(pkg.key):
-                package_name = pkg.key.replace("-", "_")
-                if package_name == "pushcart":
-                    packages[stage].append(f"{package_name}.stages.{stage}")
-                else:
-                    packages[stage].append(f"{package_name}.{stage}")
+    for pkg in pkg_resources.working_set:
+        if pattern.match(pkg.key):
+            package_name = pkg.key.replace("-", "_")
+            if package_name == "pushcart":
+                packages.append(f"{package_name}.{subpackage}")
+            else:
+                packages.append(f"{package_name}.{subpackage}")
 
     return packages
 
@@ -70,11 +69,11 @@ def get_stage_object(stage: str, config: dict, run_ts: datetime):
     if stage not in base_classes:
         raise ValueError(f"Unknown stage: {stage}")
 
-    stage_packages = _get_installed_packages()
+    stage_packages = _get_installed_packages(f"stages.{stage}")
 
     stage_classes = {}
 
-    for package_name in stage_packages[stage]:
+    for package_name in stage_packages:
         try:
             stage_classes.update(_discover_classes(package_name, base_classes[stage]))
         except ImportError:
@@ -84,3 +83,20 @@ def get_stage_object(stage: str, config: dict, run_ts: datetime):
         return stage_classes[config["type"]](config, run_ts)
     else:
         raise ValueError(f"Unknown {stage} type: {config['type']}")
+
+
+def get_handler_object(config: dict):
+    handler_packages = _get_installed_packages("log_handlers")
+
+    handler_classes = {}
+
+    for package_name in handler_packages:
+        try:
+            handler_classes.update(_discover_classes(package_name, logging.Handler))
+        except ImportError:
+            pass
+
+    if config["type"] in handler_classes:
+        return handler_classes[config["type"]](config)
+    else:
+        raise ValueError(f"Unknown handler type: {config['type']}")

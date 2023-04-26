@@ -1,0 +1,16 @@
+transformations:
+  - data: vw__silver__item_cost
+    into: vw__silver__item_cost_monthly_avg
+    sql_query: |
+      SELECT month, item_id, avg(price) AS average_price
+      FROM vw__silver__item_cost
+      GROUP BY item_id, month
+
+  - data: vw__silver__item_cost_monthly_avg
+    into: vw__silver__item_cost_monthly_avg_summer
+    sql_query: |
+      SELECT * FROM vw__bronze__item_cost_monthly_avg
+      WHERE month IN ('june', 'july', 'august')
+    validations:
+      - validation_rule: item_id IS NOT NULL
+        validation_action: DROP

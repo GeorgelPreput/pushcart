@@ -3,9 +3,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pushcart.stages.autodiscovery import _get_installed_packages, get_stage_object
+# from pushcart.stages.autodiscovery import _get_installed_packages, get_stage_object
+from pushcart.plugins import _get_installed_packages, get_stage_object
 from pushcart.stages.sources.autoloader import AutoloaderSource
-from pushcart_rest_api.sources.rest_api import RestApiSource
+from pushcart_rest_api.stages.sources import RestApiSource
 
 
 class TestGetStageObject:
@@ -68,7 +69,7 @@ class Test_GetInstalledPackages:
 
         mocker.patch("pkg_resources.working_set", mock_working_set)
 
-        installed_packages = _get_installed_packages()
+        installed_packages = _get_installed_packages("stages.sources")
 
         assert invalid_package_name not in str(installed_packages)
         assert valid_package_name in str(installed_packages)
