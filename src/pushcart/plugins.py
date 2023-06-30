@@ -158,7 +158,7 @@ def get_stage_object(stage: str, config: dict, run_ts: datetime) -> StageBase:
 
     Returns
     -------
-    any
+    StageBase
         The plugin object.
 
     Raises
