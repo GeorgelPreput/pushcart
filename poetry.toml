@@ -4,4 +4,5 @@ in-project = true
 path = "{project-dir}/.venv"
 
 [virtualenvs.options]
-system-site-packages = true
+system-site-packages = false
+always-copy = true
