@@ -23,9 +23,7 @@ from functools import cache
 from importlib import metadata as ilib_meta
 from types import ModuleType
 
-from pushcart.stages.destinations.destination_base import DestinationBase
-from pushcart.stages.sources.source_base import SourceBase
-from pushcart.stages.transformations.transformation_base import TransformationBase
+from pushcart.stages.stage_base import StageBase
 
 
 def _recursive_import(module: ModuleType, base_class: any, classes: dict) -> None:
@@ -72,11 +70,9 @@ def _discover_classes(package_name: str, base_class: any) -> dict:
     """
     classes = {}
 
-    try:
+    with contextlib.suppress(ModuleNotFoundError):
         package = importlib.import_module(package_name)
         _recursive_import(package, base_class, classes)
-    except ModuleNotFoundError:
-        pass
 
     return classes
 
@@ -173,9 +169,9 @@ def get_stage_object(stage: str, config: dict, run_ts: datetime) -> any:
     config["run_ts"] = run_ts
 
     base_classes = {
-        "sources": SourceBase,
-        "transformations": TransformationBase,
-        "destinations": DestinationBase,
+        "sources": StageBase,
+        "transformations": StageBase,
+        "destinations": StageBase,
     }
 
     if stage not in base_classes:

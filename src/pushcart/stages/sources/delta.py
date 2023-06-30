@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
-from pushcart.stages.sources.source_base import SourceBase
+from pushcart.stages.stage_base import StageBase
 
 
 @dataclass
-class DeltaSource(SourceBase):
-    def get_increment(self) -> None:
+class DeltaSource(StageBase):
+    def __call__(self) -> None:
         pass
