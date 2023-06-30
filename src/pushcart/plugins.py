@@ -144,7 +144,7 @@ def _get_plugin_object(subpackage: str, plugin_class: any, config: dict) -> any:
     raise TypeError(msg)
 
 
-def get_stage_object(stage: str, config: dict, run_ts: datetime) -> any:
+def get_stage_object(stage: str, config: dict, run_ts: datetime) -> StageBase:
     """Get a plugin object for a specific stage.
 
     Parameters
