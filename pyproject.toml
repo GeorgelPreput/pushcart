@@ -1,6 +1,6 @@
 [tool.black]
 line-length = 88
-target-version = ["py310"]
+target-version = ["py311"]
 exclude = '''
 (
   /(
@@ -78,13 +78,13 @@ exclude = [".venv", "tests"]
 
 [tool.poetry]
 name = "pushcart"
-version = "0.1.0"
-description = "Metadata based ingestion and transformation library for Databricks"
+version = "0.1.9"
+description = "Metadata transformations for Spark"
 authors = ["Georgel Preput <georgelpreput@mailbox.org>"]
 license = "GPL-3.0-or-later"
 readme = "README.md"
 classifiers = [
-  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
   "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
   "Operating System :: OS Independent",
   "Topic :: Database :: Database Engines/Servers",
@@ -93,33 +93,35 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-click = "^8.1.3"
-joblib = "^1.2.0"
-joblibspark = "^0.5.1"
-pydantic = "^1.10.7"
+ipydatagrid = "^1.1.16"
+ipywidgets = "^8.0.7"
+pandas = "^2.0.2"
+pyspark = "^3.4.1"
 python = "^3.10"
 python-dotenv = "^1.0.0"
-pyyaml = "^6.0"
-setuptools = "^68.0.0"
-tomli = "^2.0.1"
-
-[tool.poetry.extras]
-rest_api = ["pushcart-rest-api"]
-app_insights = ["pushcart-app-insights"]
 
 [tool.poetry.group.dev.dependencies]
 black = { version = "*", allow-prereleases = true }
+bumpver = "^2023.1124"
 coverage = "^7.2.7"
-dbx = "^0.8.7"
-delta-spark = "^2.2.0"
-hypothesis = "^6.70.1"
 ipykernel = "^6.22.0"
 pytest = "^7.2.0"
 pytest-cov = "^4.0.0"
 pytest-mock = "^3.10.0"
-pyspark = "^3.3.1"
+requests = "^2.31.0"
 ruff = "^0.0.265"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.bumpver]
+current_version = "1.6.1"
+version_pattern = "MAJOR.MINOR.PATCH"
+commit_message = "bump version {old_version} -> {new_version}"
+commit = true
+tag = true
+push = true
+
+[tool.bumpver.file_patterns]
+"pyproject.toml" = ['^version = "{version}"$']
