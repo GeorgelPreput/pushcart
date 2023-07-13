@@ -1,3 +1,3 @@
-# pushcart-deploy
+# pushcart
 
-Deployment helper for pipeline configurations using Pushcart
+Helps with moving potatoes, bricks and data around
