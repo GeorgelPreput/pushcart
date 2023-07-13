@@ -1,3 +1,3 @@
-# pushcart
+# pushcart-deploy
 
-Metadata based ingestion and transformation library for Databricks
+Deployment helper for pipeline configurations using Pushcart

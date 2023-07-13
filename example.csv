@@ -1,0 +1,4 @@
+column_order,source_column_name,source_column_type,dest_column_name,dest_column_type,transform_function,default_value,validation_rule,validation_action
+1,src_index_col,string,dest_index_col,int,,,dest_index_col IS NOT NULL,DROP
+2,src_text_col,string,dest_text_col,string,,,,
+3,src_ts_col,string,dest_ts_col,timestamp,"F.to_timestamp(F.col('src_ts_col'), 'dd-MM-yyyy HH:mm:ss')",,,
