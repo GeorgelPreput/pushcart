@@ -94,12 +94,9 @@ classifiers = [
 
 [tool.poetry.dependencies]
 authlib = "^1.2.1"
-# dtale = "^3.3.0"
 httpx = "^0.24.1"
 ipydatagrid = "^1.1.16"
 ipywidgets = "^8.0.7"
-# kaleido = { version = "0.2.1", allow-prereleases = true }
-itables = "^1.5.3"
 loguru = "^0.7.0"
 pandas = "^2.0.2"
 pyspark = "^3.4.1"
