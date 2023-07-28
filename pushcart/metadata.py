@@ -276,6 +276,8 @@ class Metadata:
             if isinstance(dtype, T.ArrayType)
             else dtype.simpleString(),
             "transform_function": f'F.explode("{flat_parent}.{name}")'
+            if parent
+            else f'F.explode("{name}")'
             if isinstance(dtype, T.ArrayType)
             else self._infer(f"{parent}.{name}" if parent else name)
             if isinstance(dtype, T.StringType)
@@ -385,8 +387,11 @@ class Metadata:
 
         return metadata_df.loc[~tech_cols]
 
-    def generate_code(self, keep_technical_cols: bool = False) -> str | None:
-        """Generate PySpark transformation code based on existing metadata.
+    def _prepare_metadata(
+        self,
+        keep_technical_cols: bool = False,
+    ) -> tuple[pd.DataFrame, list[str]]:
+        """Parse the metadata and keep or drop technical columns (starting with underscore).
 
         Parameters
         ----------
@@ -395,8 +400,8 @@ class Metadata:
 
         Returns
         -------
-        str | None
-            String containing runnable PySpark code
+        tuple[pd.DataFrame, list[str]]
+            Pandas DataFrame with the final set of pending transformations and list of columns to keep.
 
         Raises
         ------
@@ -419,7 +424,22 @@ class Metadata:
         if not keep_technical_cols:
             mdf = self._drop_technical_cols(mdf)
 
-        transformations = mdf.sort_values(by=["column_order"]).to_dict(orient="records")
+        return mdf.sort_values(by=["column_order"]).to_dict(orient="records"), dest_cols
+
+    def generate_code(self, keep_technical_cols: bool = False) -> str | None:
+        """Generate PySpark transformation code based on existing metadata.
+
+        Parameters
+        ----------
+        keep_technical_cols : bool, optional
+            Generate transformations for columns whose names start with underscore, by default False
+
+        Returns
+        -------
+        str | None
+            String containing runnable PySpark code
+        """
+        transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
         code_lines = ["df = (df"]
         for t in transformations:
             if (
@@ -442,3 +462,38 @@ class Metadata:
         log.info(code_str)
 
         return code_str
+
+    def transform(self, keep_technical_cols: bool = False) -> DataFrame:
+        """Perform the transformations configured in the metadata table.
+
+        Parameters
+        ----------
+        keep_technical_cols : bool, optional
+            Generate transformations for columns whose names start with underscore, by default False
+
+        Returns
+        -------
+        DataFrame
+            Spark DataFrame containing the transformed data
+        """
+        transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
+
+        result_df = self.data_df
+        for t in transformations:
+            if (
+                isinstance(t["transform_function"], str)
+                and len(t["transform_function"]) > 0
+            ):
+                result_df = result_df.withColumn(
+                    t["dest_column_name"],
+                    eval(t["transform_function"]),  # noqa: PGH001
+                )
+            elif (t["source_column_name"] != t["dest_column_name"]) or (
+                t["source_column_type"] != t["dest_column_type"]
+            ):
+                result_df = result_df.withColumn(
+                    t["dest_column_name"],
+                    F.col(t["source_column_name"]).cast(t["dest_column_type"]),
+                )
+
+        return result_df.select(dest_cols)
