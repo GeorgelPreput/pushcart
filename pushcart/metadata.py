@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import logging
 
 import pandas as pd
 import pyspark.sql.functions as F  # noqa: N812
@@ -11,14 +10,12 @@ import pyspark.sql.types as T  # noqa: N812
 from dateutil.parser import ParserError
 from ipydatagrid import DataGrid
 from IPython.display import display
+from loguru import logger
 from pandas.core.tools.datetimes import _guess_datetime_format_for_array
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.window import Window
 
 from pushcart.utils import multireplace
-
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger(__name__)
 
 
 def __get_spark_session() -> SparkSession:
@@ -26,13 +23,13 @@ def __get_spark_session() -> SparkSession:
 
 
 def _infer_json_schema(df: DataFrame, column_name: str) -> str:
-    log.info(f"Attempting to infer JSON schema for {column_name} column.")
+    logger.info(f"Attempting to infer JSON schema for {column_name} column.")
 
     spark = __get_spark_session()
     schema = spark.read.json(df.select(column_name).rdd.map(lambda x: x[0])).schema
 
     if schema.fieldNames() == ["_corrupt_record"]:
-        log.warning(f"Could not infer JSON schema for {column_name} column.")
+        logger.warning(f"Could not infer JSON schema for {column_name} column.")
         return None
 
     if "_corrupt_record" in schema.fieldNames():
@@ -70,7 +67,7 @@ def _pandas_to_spark_datetime_pattern(pattern: str) -> str:
 
 
 def _infer_timestamps(df: DataFrame, column_name: str) -> str:
-    log.info(f"Attempting to infer timestamp format for {column_name} column.")
+    logger.info(f"Attempting to infer timestamp format for {column_name} column.")
 
     pd_ts_format = None
 
@@ -82,7 +79,7 @@ def _infer_timestamps(df: DataFrame, column_name: str) -> str:
         pd_ts_format = _guess_datetime_format_for_array(pd_ts_list)
 
     if not pd_ts_format:
-        log.warning(f"Could not infer timestamp format for {column_name} column.")
+        logger.warning(f"Could not infer timestamp format for {column_name} column.")
         return None
 
     spark_ts_format = _pandas_to_spark_datetime_pattern(pd_ts_format)
@@ -248,7 +245,7 @@ class Metadata:
                 if inferred_ts:
                     return inferred_ts
             except Exception:
-                log.exception(
+                logger.exception(
                     f"Error while inferring timestamp format for {column_name} column.",
                 )
 
@@ -258,7 +255,7 @@ class Metadata:
                 if inferred_schema:
                     return inferred_schema
             except Exception:
-                log.exception(
+                logger.exception(
                     f"Error while inferring JSON schema for {column_name} column.",
                 )
 
@@ -367,7 +364,7 @@ class Metadata:
             File path to save to
         """
         self.metadata_df.to_csv(path)
-        log.info(f"Wrote {len(self.metadata_df.index)} lines to {path}")
+        logger.info(f"Wrote {len(self.metadata_df.index)} lines to {path}")
 
     @staticmethod
     def _keep_dest_cols(metadata_df: pd.DataFrame) -> pd.DataFrame:
@@ -383,7 +380,7 @@ class Metadata:
         excluded_columns = (
             metadata_df.loc[tech_cols]["dest_column_name"].to_list() or None
         )
-        log.info(f"Excluding technical columns: {excluded_columns}")
+        logger.info(f"Excluding technical columns: {excluded_columns}")
 
         return metadata_df.loc[~tech_cols]
 
@@ -416,7 +413,7 @@ class Metadata:
 
         dest_cols = [col for col in mdf["dest_column_name"].to_list() if col] or None
         if not dest_cols:
-            log.warning(
+            logger.warning(
                 "No destination columns defined in metadata. No code to generate.",
             )
             return None
@@ -459,7 +456,7 @@ class Metadata:
         code_lines.append(f"\t.select({dest_cols}))")
         code_str = "\n" + "\n".join(code_lines)
 
-        log.info(code_str)
+        logger.info(code_str)
 
         return code_str
 
