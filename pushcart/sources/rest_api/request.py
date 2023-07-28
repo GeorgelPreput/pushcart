@@ -193,12 +193,14 @@ def _update_url_and_params(url: str, params: dict) -> tuple[str, dict]:
     return stripped_url, derived_params
 
 
-def _add_data_for_get_request(data: str | dict) -> dict:
+def _add_data_for_get_request(data: str, json_data: dict) -> dict:
     """Prepare the data field sent in the body of a GET request.
 
     Parameters
     ----------
-    data : str | dict
+    data : str
+        Text or dictionary to be sent over as data in the request.
+    json_data : dict
         Text or dictionary to be sent over as data in the request.
 
     Returns
@@ -217,25 +219,27 @@ def _add_data_for_get_request(data: str | dict) -> dict:
     if data is None:
         return kwargs
 
-    if isinstance(data, dict):
-        kwargs["data"] = json.dumps(data)
+    if isinstance(json_data, dict):
+        kwargs["data"] = json.dumps(json_data)
         return kwargs
 
     if isinstance(data, str):
         kwargs["data"] = data
         return kwargs
 
-    type_error_msg = f"Expected data to be either str or dict. Got {type(data)}"
+    type_error_msg = f"Expected either data to be str or json_data to be dict. Got data: {type(data)} and json_data: {type(json_data)}"
     raise TypeError(type_error_msg)
 
 
-def _add_data_for_post_request(data: str | dict) -> dict:
+def _add_data_for_post_request(data: str, json_data: dict) -> dict:
     """Prepare the data field sent in the body of a POST request.
 
     Parameters
     ----------
-    data : str | dict
-        Text or dictionary to be sent over as data in the request.
+    data : str
+        Text to be sent over as data in the request.
+    json_data : dict
+        Dictionary to be sent over as data in the request.
 
     Returns
     -------
@@ -250,18 +254,18 @@ def _add_data_for_post_request(data: str | dict) -> dict:
     """
     kwargs = {}
 
-    if data is None:
+    if data is None and json_data is None:
         return kwargs
 
-    if isinstance(data, dict):
-        kwargs["json"] = data
+    if isinstance(json_data, dict):
+        kwargs["json"] = json_data
         return kwargs
 
     if isinstance(data, str):
         kwargs["data"] = data
         return kwargs
 
-    type_error_msg = f"Expected data to be either str or dict. Got {type(data)}"
+    type_error_msg = f"Expected either data to be str or json_data to be dict. Got data: {type(data)} and json_data: {type(json_data)}"
     raise TypeError(type_error_msg)
 
 
@@ -270,7 +274,8 @@ def _prepare_request(  # noqa: PLR0913
     headers: dict,
     params: dict,
     options: dict,
-    data: str | dict,
+    data: str,
+    json_data: dict,
     method: str,
 ) -> dict:
     """Prepare the GET or POST request with the given parameters.
@@ -284,10 +289,12 @@ def _prepare_request(  # noqa: PLR0913
     params : dict
         Parameters to be sent as part of the request
     options : dict
-        Parameters to be sent to the httpx.Client request function. For more info,
+        Dictionary of options to send to the httpx.Client request function. For more info,
         see: https://www.python-httpx.org/api/
-    data : str | dict
-        Data to be sent as part of the request.
+    data : str
+        Text data to be sent as part of the request.
+    json_data : dict
+        JSON data to be sent as part of the request.
     method : str
         GET or POST
 
@@ -300,10 +307,10 @@ def _prepare_request(  # noqa: PLR0913
     kwargs.update(options)
 
     if method.upper() == "GET":
-        kwargs.update(_add_data_for_get_request(data))
+        kwargs.update(_add_data_for_get_request(data, json_data))
 
     if method.upper() == "POST":
-        kwargs.update(_add_data_for_post_request(data))
+        kwargs.update(_add_data_for_post_request(data, json_data))
 
     return kwargs
 
@@ -335,12 +342,13 @@ def _parse_api_response(res: httpx.Response) -> list[dict]:
     return res_json
 
 
-def batch_request(
+def batch_request(  # noqa: PLR0913
     url: str,
     headers: dict = None,
     auth: dict = None,
     params: dict = None,
-    data: str | dict = None,
+    data: str = None,
+    json_data: dict = None,
     method: str = "GET",
     options: dict = None,
 ) -> list[dict]:
@@ -356,8 +364,10 @@ def batch_request(
         Authentication method, by default None
     params : dict, optional
         Parameters to be sent, by default None
-    data : str | dict, optional
-        Data to be sent in the body of the request, by default None
+    data : str, optional
+        Text data to be sent in the body of the request, by default None
+    json_data : dict, optional
+        JSON data to be sent in the body of the request, by default None
     method : str, optional
         "GET" or "POST", by default "GET"
     options : dict, optional
@@ -384,6 +394,7 @@ def batch_request(
         params=stripped_params,
         options=options,
         data=data,
+        json_data=json_data,
         method=method,
     )
 
@@ -398,7 +409,8 @@ def streaming_request(  # noqa: PLR0913
     headers: dict = None,
     auth: dict = None,
     params: dict = None,
-    data: str | dict = None,
+    data: str = None,
+    json_data: dict = None,
     method: str = "GET",
     options: dict = None,
 ) -> str:
@@ -416,8 +428,10 @@ def streaming_request(  # noqa: PLR0913
         Authentication method, by default None
     params : dict, optional
         Parameters to be sent, by default None
-    data : str | dict, optional
-        Data to be sent in the body of the request, by default None
+    data : str, optional
+        Text data to be sent in the body of the request, by default None
+    json_data : dict, optional
+        JSON data to be sent in the body of the request, by default None
     method : str, optional
         "GET" or "POST", by default "GET"
     options : dict, optional
@@ -443,6 +457,7 @@ def streaming_request(  # noqa: PLR0913
         params=stripped_params,
         options=options,
         data=data,
+        json_data=json_data,
         method=method,
     )
     with Path(target_path).open("+wb") as download_file, client.stream(**kwargs) as res:

@@ -94,14 +94,17 @@ classifiers = [
 
 [tool.poetry.dependencies]
 authlib = "^1.2.1"
+dtale = "^3.3.0"
 httpx = "^0.24.1"
 ipydatagrid = "^1.1.16"
 ipywidgets = "^8.0.7"
+kaleido = { version = "0.2.1", allow-prereleases = true }
 pandas = "^2.0.2"
 pyspark = "^3.4.1"
 python = "^3.10"
 python-dotenv = "^1.0.0"
 tqdm = "^4.65.0"
+validators = "^0.20.0"
 
 [tool.poetry.group.dev.dependencies]
 black = { version = "*", allow-prereleases = true }
