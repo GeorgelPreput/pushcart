@@ -78,7 +78,7 @@ exclude = [".venv", "tests"]
 
 [tool.poetry]
 name = "pushcart"
-version = "1.6.3"
+version = "0.1.9"
 description = "Metadata transformations for Spark"
 authors = ["Georgel Preput <georgelpreput@mailbox.org>"]
 license = "GPL-3.0-or-later"
