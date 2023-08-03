@@ -10,6 +10,7 @@ import pyspark.sql.types as T  # noqa: N812
 from dateutil.parser import ParserError
 from ipydatagrid import DataGrid
 from IPython.display import display
+from ipywidgets import Button, HBox, VBox
 from loguru import logger
 from pandas.core.tools.datetimes import _guess_datetime_format_for_array
 from pyspark.sql import DataFrame, SparkSession
@@ -245,7 +246,7 @@ class Metadata:
                 if inferred_ts:
                     return inferred_ts
             except Exception:
-                logger.exception(
+                logger.error(
                     f"Error while inferring timestamp format for {column_name} column.",
                 )
 
@@ -255,7 +256,7 @@ class Metadata:
                 if inferred_schema:
                     return inferred_schema
             except Exception:
-                logger.exception(
+                logger.error(
                     f"Error while inferring JSON schema for {column_name} column.",
                 )
 
@@ -272,9 +273,11 @@ class Metadata:
             "dest_column_type": dtype.elementType.simpleString()
             if isinstance(dtype, T.ArrayType)
             else dtype.simpleString(),
-            "transform_function": f'F.explode("{flat_parent}.{name}")'
-            if parent
-            else f'F.explode("{name}")'
+            "transform_function": (
+                f'F.explode("{flat_parent}.{name}")'
+                if parent
+                else f'F.explode("{name}")'
+            )
             if isinstance(dtype, T.ArrayType)
             else self._infer(f"{parent}.{name}" if parent else name)
             if isinstance(dtype, T.StringType)
@@ -332,6 +335,19 @@ class Metadata:
     def _on_cell_changed(self, _: dict) -> None:
         self.metadata_df = self.metadata_grid.data
 
+    def _on_add_row(self, _: Button) -> None:
+        data = self.metadata_grid.get_visible_data()
+        new_row = pd.DataFrame(
+            columns=data.columns,
+            index=[data.index[-1] + 1],
+            data="" * len(data.columns),
+        )
+        self.metadata_grid.data = pd.concat([data, new_row]).reset_index(drop=True)
+
+    def _on_remove_row(self, _: Button) -> None:
+        data = self.metadata_grid.get_visible_data()
+        self.metadata_grid.data = data.drop(data.tail(1).index)
+
     def visualize(self) -> None:
         """Show the generated metadata and allow user editing.
 
@@ -348,7 +364,16 @@ class Metadata:
         self.metadata_grid.auto_fit_params = {"area": "all"}
         self.metadata_grid.auto_fit_columns = True
         self.metadata_grid.on_cell_change(self._on_cell_changed)
-        display(self.metadata_grid)
+
+        add_row_button = Button(description="Add Row")
+        add_row_button.on_click(self._on_add_row)
+
+        remove_row_button = Button(description="Remove Row")
+        remove_row_button.on_click(self._on_remove_row)
+
+        layout = VBox([HBox([add_row_button, remove_row_button]), self.metadata_grid])
+
+        display(layout)
 
     def get_metadata(self) -> None:
         """Generate new metadata for the provided dataset and visualize it."""
