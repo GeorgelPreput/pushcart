@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse, urlunparse
 import httpx
 from authlib.integrations.httpx_client import OAuth2Client
 from authlib.oauth2.rfc7523 import ClientSecretJWT
+from loguru import logger
 from requests.structures import CaseInsensitiveDict
 from tqdm import tqdm
 
@@ -48,6 +49,8 @@ def _build_oauth_client(auth: dict) -> httpx.Client:
         msg = "Please provide a client-secret in the auth specification"
         raise ValueError(msg)
 
+    logger.info("Using OAuth2 authentication.")
+
     client = OAuth2Client(
         client_id=client_id,
         client_secret=client_secret,
@@ -55,6 +58,8 @@ def _build_oauth_client(auth: dict) -> httpx.Client:
     )
     client.register_client_auth_method(ClientSecretJWT(token_endpoint=token_url))
     client.fetch_token(token_url)
+
+    logger.debug("Got OAuth2 token.")
 
     return client
 
@@ -87,6 +92,8 @@ def _build_basic_auth_client(auth: dict) -> httpx.Client:
         msg = "Please provide a client-secret in the auth specification"
         raise ValueError(msg)
 
+    logger.info("Using basic authentication.")
+
     basic_auth = httpx.BasicAuth(username=client_id, password=client_secret)
     transport = httpx.HTTPTransport(retries=5)
     return httpx.Client(transport=transport, auth=basic_auth)
@@ -100,6 +107,8 @@ def _build_no_auth_client() -> httpx.Client:
     httpx.Client
         Client object to run the requests from.
     """
+    logger.info("Using no authentication.")
+
     transport = httpx.HTTPTransport(retries=5)
     return httpx.Client(transport=transport)
 
@@ -190,6 +199,9 @@ def _update_url_and_params(url: str, params: dict) -> tuple[str, dict]:
     stripped_url, derived_params = _split_params_from_url(url)
     derived_params.update(params)
 
+    logger.debug(f"URL: {stripped_url}")
+    logger.debug(f"Parameters: {derived_params}")
+
     return stripped_url, derived_params
 
 
@@ -221,10 +233,12 @@ def _add_data_for_get_request(data: str, json_data: dict) -> dict:
 
     if isinstance(json_data, dict):
         kwargs["data"] = json.dumps(json_data)
+        logger.debug("Added JSON dump of data to GET request body.")
         return kwargs
 
     if isinstance(data, str):
         kwargs["data"] = data
+        logger.debug("Added text data to GET request body.")
         return kwargs
 
     type_error_msg = f"Expected either data to be str or json_data to be dict. Got data: {type(data)} and json_data: {type(json_data)}"
@@ -259,10 +273,12 @@ def _add_data_for_post_request(data: str, json_data: dict) -> dict:
 
     if isinstance(json_data, dict):
         kwargs["json"] = json_data
+        logger.debug("Added JSON data to POST request body.")
         return kwargs
 
     if isinstance(data, str):
         kwargs["data"] = data
+        logger.debug("Added text data to POST request body.")
         return kwargs
 
     type_error_msg = f"Expected either data to be str or json_data to be dict. Got data: {type(data)} and json_data: {type(json_data)}"
@@ -335,13 +351,17 @@ def _parse_api_response(res: httpx.Response) -> list[dict]:
 
     if not res_json:
         res_json = {"payload": res.text}
+        logger.debug("Returning text response:")
 
     if not isinstance(res_json, list):
         res_json = [res_json]
+        logger.debug("Returning JSON response:")
 
+    logger.debug(res_json)
     return res_json
 
 
+@logger.catch
 def batch_request(  # noqa: PLR0913
     url: str,
     headers: dict = None,
@@ -403,6 +423,7 @@ def batch_request(  # noqa: PLR0913
     return _parse_api_response(res)
 
 
+@logger.catch
 def streaming_request(  # noqa: PLR0913
     target_path: str,
     url: str,
