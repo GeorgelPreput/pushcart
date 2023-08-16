@@ -13,7 +13,7 @@ from IPython.display import display
 from ipywidgets import Button, HBox, VBox
 from loguru import logger
 from pandas.core.tools.datetimes import _guess_datetime_format_for_array
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql.window import Window
 
 from pushcart.utils import multireplace
@@ -213,13 +213,16 @@ class Metadata:
         ]
 
     @classmethod
-    def from_existing_csv(cls, path: str) -> Metadata:
+    def from_existing_csv(cls, path: str, data_df: DataFrame | None = None) -> Metadata:
         """Load metadata from an existing metadata file, without the original dataset.
 
         Parameters
         ----------
         path : str
             Path to metadata file.
+        data_df : DataFrame | None, optional
+            Optionally, attach an actual dataset to the Metadata object for running
+            transformations on it automatically, by default None
 
         Returns
         -------
@@ -228,6 +231,7 @@ class Metadata:
         """
         md = Metadata(df=None)
         md.metadata_df = pd.read_csv(path)
+        md.data_df = data_df
 
         return md
 
@@ -241,24 +245,14 @@ class Metadata:
         inferred_schema = None
 
         if self.infer_timestamps:
-            try:
-                inferred_ts = _infer_timestamps(sampled_df, column_name)
-                if inferred_ts:
-                    return inferred_ts
-            except Exception:
-                logger.error(
-                    f"Error while inferring timestamp format for {column_name} column.",
-                )
+            inferred_ts = _infer_timestamps(sampled_df, column_name)
+            if inferred_ts:
+                return inferred_ts
 
         if self.infer_json_schema:
-            try:
-                inferred_schema = _infer_json_schema(sampled_df, column_name)
-                if inferred_schema:
-                    return inferred_schema
-            except Exception:
-                logger.error(
-                    f"Error while inferring JSON schema for {column_name} column.",
-                )
+            inferred_schema = _infer_json_schema(sampled_df, column_name)
+            if inferred_schema:
+                return inferred_schema
 
         return ""
 
@@ -448,6 +442,52 @@ class Metadata:
 
         return mdf.sort_values(by=["column_order"]).to_dict(orient="records"), dest_cols
 
+    def _generated_col_or_transform(self, transformation_step: str) -> str:
+        if (
+            isinstance(transformation_step["transform_function"], str)
+            and len(transformation_step["transform_function"]) > 0
+        ):
+            return transformation_step["transform_function"]
+
+        return f"F.col(\"{transformation_step['source_column_name']}\")"
+
+    def _generated_transform_with_default(
+        self,
+        transformation_step: str,
+        col_or_transf: str,
+    ) -> str:
+        if (
+            isinstance(transformation_step["default_value"], str)
+            and len(transformation_step["default_value"]) > 0
+        ):
+            default_value = self._generated_cast_or_original_dtype(
+                transformation_step,
+                f"F.lit(\"{transformation_step['default_value']}\")",
+            )
+            return f"F.coalesce({col_or_transf}, {default_value})"
+
+        return col_or_transf
+
+    def _generated_cast_or_original_dtype(
+        self,
+        transformation_step: str,
+        col_or_transf: Column,
+    ) -> Column:
+        if (
+            transformation_step["source_column_type"]
+            != transformation_step["dest_column_type"]
+        ) and (
+            all(
+                dtype not in transformation_step["dest_column_type"]
+                for dtype in ["array", "struct"]
+            )
+        ):
+            return (
+                f"{col_or_transf}.cast(\"{transformation_step['dest_column_type']}\")"
+            )
+
+        return col_or_transf
+
     def generate_code(self, keep_technical_cols: bool = False) -> str | None:
         """Generate PySpark transformation code based on existing metadata.
 
@@ -462,21 +502,15 @@ class Metadata:
             String containing runnable PySpark code
         """
         transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
+
         code_lines = ["df = (df"]
+
         for t in transformations:
-            if (
-                isinstance(t["transform_function"], str)
-                and len(t["transform_function"]) > 0
-            ):
-                code_lines.append(
-                    f"\t.withColumn(\"{t['dest_column_name']}\", {t['transform_function']})",
-                )
-            elif (t["source_column_name"] != t["dest_column_name"]) or (
-                t["source_column_type"] != t["dest_column_type"]
-            ):
-                code_lines.append(
-                    f"\t.withColumn(\"{t['dest_column_name']}\", F.col(\"{t['source_column_name']}\").cast(\"{t['dest_column_type']}\"))",
-                )
+            col = self._generated_col_or_transform(t)
+            col = self._generated_transform_with_default(t, col)
+            col = self._generated_cast_or_original_dtype(t, col)
+
+            code_lines.append(f"\t.withColumn(\"{t['dest_column_name']}\", {col})")
 
         code_lines.append(f"\t.select({dest_cols}))")
         code_str = "\n" + "\n".join(code_lines)
@@ -484,6 +518,52 @@ class Metadata:
         logger.info(code_str)
 
         return code_str
+
+    def _col_or_transform(self, transformation_step: str) -> Column:
+        if (
+            isinstance(transformation_step["transform_function"], str)
+            and len(transformation_step["transform_function"]) > 0
+        ):
+            return eval(transformation_step["transform_function"])  # noqa: PGH001
+
+        return F.col(transformation_step["source_column_name"])
+
+    def _transform_with_default(
+        self,
+        transformation_step: str,
+        col_or_transf: Column,
+    ) -> Column:
+        if (
+            isinstance(transformation_step["default_value"], str)
+            and len(transformation_step["default_value"]) > 0
+        ):
+            return F.coalesce(
+                col_or_transf,
+                self._cast_or_original_dtype(
+                    transformation_step,
+                    F.lit(transformation_step["default_value"]),
+                ),
+            )
+
+        return col_or_transf
+
+    def _cast_or_original_dtype(
+        self,
+        transformation_step: str,
+        col_or_transf: Column,
+    ) -> Column:
+        if (
+            transformation_step["source_column_type"]
+            != transformation_step["dest_column_type"]
+        ) and (
+            all(
+                dtype not in transformation_step["dest_column_type"]
+                for dtype in ["array", "struct"]
+            )
+        ):
+            return col_or_transf.cast(transformation_step["dest_column_type"])
+
+        return col_or_transf
 
     def transform(self, keep_technical_cols: bool = False) -> DataFrame:
         """Perform the transformations configured in the metadata table.
@@ -502,20 +582,10 @@ class Metadata:
 
         result_df = self.data_df
         for t in transformations:
-            if (
-                isinstance(t["transform_function"], str)
-                and len(t["transform_function"]) > 0
-            ):
-                result_df = result_df.withColumn(
-                    t["dest_column_name"],
-                    eval(t["transform_function"]),  # noqa: PGH001
-                )
-            elif (t["source_column_name"] != t["dest_column_name"]) or (
-                t["source_column_type"] != t["dest_column_type"]
-            ):
-                result_df = result_df.withColumn(
-                    t["dest_column_name"],
-                    F.col(t["source_column_name"]).cast(t["dest_column_type"]),
-                )
+            col = self._col_or_transform(t)
+            col = self._transform_with_default(t, col)
+            col = self._cast_or_original_dtype(t, col)
+
+            result_df = result_df.withColumn(t["dest_column_name"], col)
 
         return result_df.select(dest_cols)
