@@ -16,7 +16,9 @@ from pandas.core.tools.datetimes import _guess_datetime_format_for_array
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.window import Window
 
-from pushcart.utils import multireplace
+from pushcart.metadata.spark import generate_code as sp_generate_code
+from pushcart.metadata.spark import transform as sp_transform
+from pushcart.utils import pandas_to_spark_datetime_pattern
 
 
 def __get_spark_session() -> SparkSession:
@@ -43,30 +45,6 @@ def _infer_json_schema(df: DataFrame, column_name: str) -> str:
     return f'F.from_json(F.col("{column_name}"), schema="{schema.simpleString()}")'
 
 
-def _pandas_to_spark_datetime_pattern(pattern: str) -> str:
-    replacement_map = {
-        "%Y": "yyyy",
-        "%y": "yy",
-        "%m": "MM",
-        "%B": "MMMM",
-        "%b": "MMM",
-        "%d": "dd",
-        "%A": "EEEE",
-        "%a": "EEE",
-        "%H": "HH",
-        "%I": "hh",
-        "%p": "a",
-        "%M": "mm",
-        "%S": "ss",
-        "%f": "SSSSSS",
-        "%z": "Z",
-        "%Z": "z",
-        "T": "'T'",
-    }
-
-    return multireplace(pattern, replacement_map)
-
-
 def _infer_timestamps(df: DataFrame, column_name: str) -> str:
     logger.info(f"Attempting to infer timestamp format for {column_name} column.")
 
@@ -83,7 +61,7 @@ def _infer_timestamps(df: DataFrame, column_name: str) -> str:
         logger.warning(f"Could not infer timestamp format for {column_name} column.")
         return None
 
-    spark_ts_format = _pandas_to_spark_datetime_pattern(pd_ts_format)
+    spark_ts_format = pandas_to_spark_datetime_pattern(pd_ts_format)
 
     return f'F.to_timestamp(F.col("{column_name}"), "{spark_ts_format}")'
 
@@ -213,13 +191,16 @@ class Metadata:
         ]
 
     @classmethod
-    def from_existing_csv(cls, path: str) -> Metadata:
+    def from_existing_csv(cls, path: str, data_df: DataFrame | None = None) -> Metadata:
         """Load metadata from an existing metadata file, without the original dataset.
 
         Parameters
         ----------
         path : str
             Path to metadata file.
+        data_df : DataFrame | None, optional
+            Optionally, attach an actual dataset to the Metadata object for running
+            transformations on it automatically, by default None
 
         Returns
         -------
@@ -228,6 +209,7 @@ class Metadata:
         """
         md = Metadata(df=None)
         md.metadata_df = pd.read_csv(path)
+        md.data_df = data_df
 
         return md
 
@@ -241,24 +223,14 @@ class Metadata:
         inferred_schema = None
 
         if self.infer_timestamps:
-            try:
-                inferred_ts = _infer_timestamps(sampled_df, column_name)
-                if inferred_ts:
-                    return inferred_ts
-            except Exception:
-                logger.error(
-                    f"Error while inferring timestamp format for {column_name} column.",
-                )
+            inferred_ts = _infer_timestamps(sampled_df, column_name)
+            if inferred_ts:
+                return inferred_ts
 
         if self.infer_json_schema:
-            try:
-                inferred_schema = _infer_json_schema(sampled_df, column_name)
-                if inferred_schema:
-                    return inferred_schema
-            except Exception:
-                logger.error(
-                    f"Error while inferring JSON schema for {column_name} column.",
-                )
+            inferred_schema = _infer_json_schema(sampled_df, column_name)
+            if inferred_schema:
+                return inferred_schema
 
         return ""
 
@@ -462,28 +434,8 @@ class Metadata:
             String containing runnable PySpark code
         """
         transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
-        code_lines = ["df = (df"]
-        for t in transformations:
-            if (
-                isinstance(t["transform_function"], str)
-                and len(t["transform_function"]) > 0
-            ):
-                code_lines.append(
-                    f"\t.withColumn(\"{t['dest_column_name']}\", {t['transform_function']})",
-                )
-            elif (t["source_column_name"] != t["dest_column_name"]) or (
-                t["source_column_type"] != t["dest_column_type"]
-            ):
-                code_lines.append(
-                    f"\t.withColumn(\"{t['dest_column_name']}\", F.col(\"{t['source_column_name']}\").cast(\"{t['dest_column_type']}\"))",
-                )
 
-        code_lines.append(f"\t.select({dest_cols}))")
-        code_str = "\n" + "\n".join(code_lines)
-
-        logger.info(code_str)
-
-        return code_str
+        return sp_generate_code(transformations, dest_cols)
 
     def transform(self, keep_technical_cols: bool = False) -> DataFrame:
         """Perform the transformations configured in the metadata table.
@@ -500,22 +452,4 @@ class Metadata:
         """
         transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
 
-        result_df = self.data_df
-        for t in transformations:
-            if (
-                isinstance(t["transform_function"], str)
-                and len(t["transform_function"]) > 0
-            ):
-                result_df = result_df.withColumn(
-                    t["dest_column_name"],
-                    eval(t["transform_function"]),  # noqa: PGH001
-                )
-            elif (t["source_column_name"] != t["dest_column_name"]) or (
-                t["source_column_type"] != t["dest_column_type"]
-            ):
-                result_df = result_df.withColumn(
-                    t["dest_column_name"],
-                    F.col(t["source_column_name"]).cast(t["dest_column_type"]),
-                )
-
-        return result_df.select(dest_cols)
+        return sp_transform(self.data_df, transformations, dest_cols)
