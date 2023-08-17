@@ -91,7 +91,7 @@ def generated_cast_or_original_dtype(
     return col_or_transf
 
 
-def generate_code(transformations: pd.DataFrame, dest_cols: list[str]) -> str | None:
+def generate_code(transformations: pd.DataFrame, dest_cols: list[str]) -> str:
     """Generate PySpark transformation code based on existing metadata.
 
     Parameters
@@ -103,7 +103,7 @@ def generate_code(transformations: pd.DataFrame, dest_cols: list[str]) -> str | 
 
     Returns
     -------
-    str | None
+    str
         String containing runnable PySpark code
     """
     code_lines = ["df = (df"]
