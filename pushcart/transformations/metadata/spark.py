@@ -6,7 +6,7 @@ from loguru import logger
 from pyspark.sql import Column, DataFrame
 
 
-def generated_col_or_transform(transformation_step: str) -> str:
+def generated_col_or_transform(transformation_step: dict) -> str:
     """Generate column or transformation function based on the transformation step.
 
     Parameters
@@ -29,7 +29,7 @@ def generated_col_or_transform(transformation_step: str) -> str:
 
 
 def generated_transform_with_default(
-    transformation_step: str,
+    transformation_step: dict,
     col_or_transf: str,
 ) -> str:
     """Generate transformation with default value if specified.
@@ -60,9 +60,9 @@ def generated_transform_with_default(
 
 
 def generated_cast_or_original_dtype(
-    transformation_step: str,
-    col_or_transf: Column,
-) -> Column:
+    transformation_step: dict,
+    col_or_transf: str,
+) -> str:
     """Cast to the destination type or return the original column based on the transformation step.
 
     Parameters
@@ -123,7 +123,7 @@ def generate_code(transformations: pd.DataFrame, dest_cols: list[str]) -> str:
     return code_str
 
 
-def col_or_transform(transformation_step: str) -> Column:
+def col_or_transform(transformation_step: dict) -> Column:
     """Evaluate column or transformation function based on the transformation step.
 
     Parameters
@@ -146,7 +146,7 @@ def col_or_transform(transformation_step: str) -> Column:
 
 
 def transform_with_default(
-    transformation_step: str,
+    transformation_step: dict,
     col_or_transf: Column,
 ) -> Column:
     """Apply transformation with default value if specified.
@@ -179,7 +179,7 @@ def transform_with_default(
 
 
 def cast_or_original_dtype(
-    transformation_step: str,
+    transformation_step: dict,
     col_or_transf: Column,
 ) -> Column:
     """Cast to the destination type or return the original column based on the transformation step.

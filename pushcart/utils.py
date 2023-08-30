@@ -34,7 +34,7 @@ def multireplace(string: str, replacements: dict, ignore_case: bool = False) -> 
     rep_sorted = sorted(replacements, key=len, reverse=True)
     rep_escaped = map(re.escape, rep_sorted)
 
-    pattern = re.compile("|".join(rep_escaped), re.IGNORECASE if ignore_case else 0)
+    pattern = re.compile("|".join(rep_escaped), re.IGNORECASE if ignore_case else 0)  # type: ignore
 
     return pattern.sub(
         lambda match: replacements[_normalize_old(match.group(0))],

@@ -16,16 +16,16 @@ from pandas.core.tools.datetimes import _guess_datetime_format_for_array
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.window import Window
 
-from pushcart.metadata.spark import generate_code as sp_generate_code
-from pushcart.metadata.spark import transform as sp_transform
+from pushcart.transformations.metadata.spark import generate_code as sp_generate_code
+from pushcart.transformations.metadata.spark import transform as sp_transform
 from pushcart.utils import pandas_to_spark_datetime_pattern
 
 
 def __get_spark_session() -> SparkSession:
-    return SparkSession.getActiveSession() or SparkSession.newSession()
+    return SparkSession.builder.getOrCreate()
 
 
-def _infer_json_schema(df: DataFrame, column_name: str) -> str:
+def _infer_json_schema(df: DataFrame, column_name: str) -> str | None:
     logger.info(f"Attempting to infer JSON schema for {column_name} column.")
 
     spark = __get_spark_session()
@@ -45,7 +45,7 @@ def _infer_json_schema(df: DataFrame, column_name: str) -> str:
     return f'F.from_json(F.col("{column_name}"), schema="{schema.simpleString()}")'
 
 
-def _infer_timestamps(df: DataFrame, column_name: str) -> str:
+def _infer_timestamps(df: DataFrame, column_name: str) -> str | None:
     logger.info(f"Attempting to infer timestamp format for {column_name} column.")
 
     pd_ts_format = None
@@ -53,7 +53,7 @@ def _infer_timestamps(df: DataFrame, column_name: str) -> str:
     with contextlib.suppress(ParserError, AttributeError, TypeError):
         pd_ts_df = df.select(column_name).dropna().limit(1).toPandas()
         # Pandas keeps the last bit of the field path as column name
-        pd_ts_list = pd_ts_df[column_name.split(".")[-1]].to_numpy()
+        pd_ts_list = pd_ts_df[column_name.split(".")[-1]].to_numpy()  # type: ignore
 
         pd_ts_format = _guess_datetime_format_for_array(pd_ts_list)
 
@@ -66,7 +66,7 @@ def _infer_timestamps(df: DataFrame, column_name: str) -> str:
     return f'F.to_timestamp(F.col("{column_name}"), "{spark_ts_format}")'
 
 
-def get_unique_values(df: DataFrame, max_rows: int = None) -> DataFrame:
+def get_unique_values(df: DataFrame, max_rows: int | None = None) -> DataFrame | None:
     """Get a dataframe with only per-column unique values for inference.
 
     Useful for more accurately inferring metadata for some datasets.
@@ -118,7 +118,7 @@ def get_unique_values(df: DataFrame, max_rows: int = None) -> DataFrame:
         return spark.createDataFrame([], df.schema)
 
     if not max_rows:
-        max_rows - df.count()
+        max_rows = df.count()
 
     unique_vals_df: DataFrame = spark.createDataFrame(
         [{"_row_index": r} for r in range(1, max_rows)],
@@ -151,7 +151,7 @@ class Metadata:
 
     def __init__(
         self,
-        df: DataFrame,
+        df: DataFrame | None = None,
         infer_json_schema: bool = True,
         infer_timestamps: bool = True,
         infer_fraction: float = 0.25,
@@ -207,13 +207,15 @@ class Metadata:
         Metadata
             Object allowing to visualize, edit, and generate PySpark code from metadata.
         """
-        md = Metadata(df=None)
+        md = Metadata(df=data_df)
         md.metadata_df = pd.read_csv(path)
-        md.data_df = data_df
 
         return md
 
     def _infer(self, column_name: str) -> str:
+        if self.data_df is None:
+            raise ValueError("Cannot perform inference when DataFrame data_df is None.")
+
         sampled_df = self.data_df.sample(
             fraction=self.infer_fraction,
             withReplacement=False,
@@ -234,10 +236,20 @@ class Metadata:
 
         return ""
 
-    def _generate_field(self, field: T.StructField, parent: str = None) -> dict:
+    def _generate_field(self, field: T.StructField, parent: str | None = None) -> dict:
         name = field.name
         dtype = field.dataType
+
         flat_parent = parent.replace(".", "_") if parent else None
+        transform_function = (
+            f'F.explode("{flat_parent}.{name}")' if parent else f'F.explode("{name}")'
+        )
+        inferred_dtype_from_str = (
+            self._infer(f"{parent}.{name}" if parent else name)
+            if isinstance(dtype, T.StringType)
+            else ""
+        )
+
         return {
             "source_column_name": f"{flat_parent}.{name}" if parent else name,
             "source_column_type": dtype.simpleString(),
@@ -245,21 +257,15 @@ class Metadata:
             "dest_column_type": dtype.elementType.simpleString()
             if isinstance(dtype, T.ArrayType)
             else dtype.simpleString(),
-            "transform_function": (
-                f'F.explode("{flat_parent}.{name}")'
-                if parent
-                else f'F.explode("{name}")'
-            )
+            "transform_function": transform_function
             if isinstance(dtype, T.ArrayType)
-            else self._infer(f"{parent}.{name}" if parent else name)
-            if isinstance(dtype, T.StringType)
-            else "",
+            else inferred_dtype_from_str,
             "default_value": "",
             "validation_rule": "",
             "validation_action": "",
         }
 
-    def _generate(self, schema: T.StructType, parent: str = None) -> list:
+    def _generate(self, schema: T.StructType, parent: str | None = None) -> list:
         fields = []
 
         for f in schema.fields:
@@ -413,7 +419,7 @@ class Metadata:
             logger.warning(
                 "No destination columns defined in metadata. No code to generate.",
             )
-            return None
+            return (None, [])
 
         if not keep_technical_cols:
             mdf = self._drop_technical_cols(mdf)
@@ -451,5 +457,10 @@ class Metadata:
             Spark DataFrame containing the transformed data
         """
         transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
+
+        if self.data_df is None:
+            raise ValueError(
+                "Cannot perform transformation when DataFrame data_df is None."
+            )
 
         return sp_transform(self.data_df, transformations, dest_cols)
