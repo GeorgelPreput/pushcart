@@ -95,7 +95,7 @@ def _is_complex_type(df: DataFrame, col_name: str) -> bool:
     return False
 
 
-def _separate_parent_from_child(col_name: str) -> tuple[str, str]:
+def _separate_parent_from_child(col_name: str) -> tuple[str | None, str]:
     """Separate the parent column name from the child column name.
 
     Parameters
@@ -152,6 +152,9 @@ def _hash_nested_col(df: DataFrame, col_name: str) -> DataFrame:
     """
     parent_col, child_col = _separate_parent_from_child(col_name)
 
+    if parent_col is None:
+        raise ValueError(f"Parent column of {child_col} is None.")
+
     if _is_complex_type(df, col_name):
         return df.withColumn(
             parent_col,
@@ -201,7 +204,7 @@ def _get_fields_to_drop(col_name: str, processed_cols: list[str]) -> list[str]:
 def _drop_processed_cols(
     input_df: DataFrame,
     col_name: str,
-    fields_to_drop: list = None,
+    fields_to_drop: list | None = None,
 ) -> DataFrame:
     """Drop the processed columns from the DataFrame.
 
@@ -231,7 +234,7 @@ def _drop_processed_cols(
 def _create_split_table(
     input_df: DataFrame,
     col_name: str,
-    fields_to_drop: list = None,
+    fields_to_drop: list | None = None,
 ) -> DataFrame:
     """Create a new table by splitting a column from the original DataFrame.
 
@@ -250,9 +253,10 @@ def _create_split_table(
         New DataFrame containing the split column.
     """
     col_name_flat = col_name.replace(".", "__")
+    fields_to_drop = fields_to_drop or []
 
     logger.info(f"Splitting column {col_name_flat} from original dataframe.")
-    output_df = _drop_processed_cols(input_df, col_name, fields_to_drop or [])
+    output_df = _drop_processed_cols(input_df, col_name, fields_to_drop)
 
     if _is_array(output_df, col_name):
         return output_df.select(
@@ -304,7 +308,7 @@ def _split_root(input_df: DataFrame, cols: list[str]) -> DataFrame:
     return input_df
 
 
-def _split_children(root_df: DataFrame, cols: list[str]) -> DataFrame:
+def _split_children(root_df: DataFrame, cols: list[str]) -> dict[str, DataFrame]:
     """Split specified columns from the root DataFrame into separate DataFrames.
 
     For each specified column, this function creates a new DataFrame by splitting
@@ -327,7 +331,7 @@ def _split_children(root_df: DataFrame, cols: list[str]) -> DataFrame:
     """
     cols = sorted(cols, key=lambda x: x.count("."), reverse=True)
 
-    processed_cols = []
+    processed_cols: list[str] = []
     children = {}
 
     for col_name in cols:
