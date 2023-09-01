@@ -53,7 +53,7 @@ def _infer_timestamps(df: DataFrame, column_name: str) -> str | None:
     with contextlib.suppress(ParserError, AttributeError, TypeError):
         pd_ts_df = df.select(column_name).dropna().limit(1).toPandas()
         # Pandas keeps the last bit of the field path as column name
-        pd_ts_list = pd_ts_df[column_name.split(".")[-1]].to_numpy()  # type: ignore
+        pd_ts_list = pd_ts_df[column_name.split(".")[-1]].to_numpy()  # type: ignore[index]
 
         pd_ts_format = _guess_datetime_format_for_array(pd_ts_list)
 
@@ -214,7 +214,8 @@ class Metadata:
 
     def _infer(self, column_name: str) -> str:
         if self.data_df is None:
-            raise ValueError("Cannot perform inference when DataFrame data_df is None.")
+            msg = "Cannot perform inference when DataFrame data_df is None."
+            raise ValueError(msg)
 
         sampled_df = self.data_df.sample(
             fraction=self.infer_fraction,
@@ -459,8 +460,9 @@ class Metadata:
         transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
 
         if self.data_df is None:
+            msg = "Cannot perform transformation when DataFrame data_df is None."
             raise ValueError(
-                "Cannot perform transformation when DataFrame data_df is None."
+                msg,
             )
 
         return sp_transform(self.data_df, transformations, dest_cols)
