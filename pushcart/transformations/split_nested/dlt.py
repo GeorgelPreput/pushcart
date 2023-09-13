@@ -2,7 +2,7 @@
 
 # pylint: disable=import-error
 # pyright: reportMissingImports=false
-import dlt
+import dlt  # type: ignore[import]
 from pyspark.sql import DataFrame
 
 import pushcart.transformations.split_nested.spark as ps

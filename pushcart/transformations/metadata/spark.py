@@ -108,7 +108,7 @@ def generate_code(transformations: pd.DataFrame, dest_cols: list[str]) -> str:
     """
     code_lines = ["df = (df"]
 
-    for t in transformations:
+    for t in transformations.to_dict("records"):
         col = generated_col_or_transform(t)
         col = generated_transform_with_default(t, col)
         col = generated_cast_or_original_dtype(t, col)
@@ -232,7 +232,7 @@ def transform(
         PySpark DataFrame containing the transformed data.
     """
     result_df = data_df
-    for t in transformations:
+    for t in transformations.to_dict("records"):
         col = col_or_transform(t)
         col = transform_with_default(t, col)
         col = cast_or_original_dtype(t, col)

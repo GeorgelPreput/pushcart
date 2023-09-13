@@ -1,7 +1,7 @@
 """Function to flatten nested PySpark DataFrames using DLT."""
 # pylint: disable=import-error
 # pyright: reportMissingImports=false
-import dlt
+import dlt  # type: ignore[import]
 from pyspark.sql import DataFrame
 
 import pushcart.transformations.flatten_nested.spark as ps

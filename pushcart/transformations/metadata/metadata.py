@@ -8,15 +8,15 @@ import pandas as pd
 import pyspark.sql.functions as F  # noqa: N812
 import pyspark.sql.types as T  # noqa: N812
 from dateutil.parser import ParserError
-from ipydatagrid import DataGrid
+from ipydatagrid import DataGrid  # type: ignore[import]
 from IPython.display import display
-from ipywidgets import Button, HBox, VBox
+from ipywidgets import Button, HBox, VBox  # type: ignore[import]
 from loguru import logger
 from pandas.core.tools.datetimes import _guess_datetime_format_for_array
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.window import Window
 
-from pushcart.transformations.metadata.spark import generate_code as sp_generate_code
+from pushcart.transformations.metadata.spark import generate_code as sp_code
 from pushcart.transformations.metadata.spark import transform as sp_transform
 from pushcart.utils import pandas_to_spark_datetime_pattern
 
@@ -120,7 +120,7 @@ def get_unique_values(df: DataFrame, max_rows: int | None = None) -> DataFrame |
     if not max_rows:
         max_rows = df.count()
 
-    unique_vals_df: DataFrame = spark.createDataFrame(
+    unique_vals_df: DataFrame = spark.createDataFrame(  #type: ignore[type-var]
         [{"_row_index": r} for r in range(1, max_rows)],
     )
 
@@ -175,7 +175,7 @@ class Metadata:
         self.infer_timestamps = infer_timestamps
         self.infer_fraction = infer_fraction
 
-        self.metadata_df: pd.DataFrame = None
+        self.metadata_df: pd.DataFrame | None = None
         self.metadata_grid: DataGrid = None
 
         self.metadata_cols = [
@@ -367,6 +367,10 @@ class Metadata:
         path : str
             File path to save to
         """
+        if self.metadata_df is None:
+            msg = "Empty metadata, cannot save to CSV."
+            raise ValueError(msg)
+
         self.metadata_df.to_csv(path)
         logger.info(f"Wrote {len(self.metadata_df.index)} lines to {path}")
 
@@ -391,7 +395,7 @@ class Metadata:
     def _prepare_metadata(
         self,
         keep_technical_cols: bool = False,
-    ) -> tuple[pd.DataFrame, list[str]]:
+    ) -> tuple[pd.DataFrame | None, list[str]]:
         """Parse the metadata and keep or drop technical columns (starting with underscore).
 
         Parameters
@@ -425,7 +429,7 @@ class Metadata:
         if not keep_technical_cols:
             mdf = self._drop_technical_cols(mdf)
 
-        return mdf.sort_values(by=["column_order"]).to_dict(orient="records"), dest_cols
+        return mdf.sort_values(by=["column_order"]), dest_cols
 
     def generate_code(self, keep_technical_cols: bool = False) -> str | None:
         """Generate PySpark transformation code based on existing metadata.
@@ -442,9 +446,12 @@ class Metadata:
         """
         transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
 
-        return sp_generate_code(transformations, dest_cols)
+        if transformations is None:
+            return None
 
-    def transform(self, keep_technical_cols: bool = False) -> DataFrame:
+        return sp_code(transformations, dest_cols)
+
+    def transform(self, keep_technical_cols: bool = False) -> DataFrame | None:
         """Perform the transformations configured in the metadata table.
 
         Parameters
@@ -458,6 +465,9 @@ class Metadata:
             Spark DataFrame containing the transformed data
         """
         transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
+
+        if transformations is None:
+            return None
 
         if self.data_df is None:
             msg = "Cannot perform transformation when DataFrame data_df is None."
