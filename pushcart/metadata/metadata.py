@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 
+import numpy as np
 import pandas as pd
 import pyspark.sql.functions as F  # noqa: N812
 import pyspark.sql.types as T  # noqa: N812
@@ -213,6 +214,40 @@ class Metadata:
 
         return md
 
+    @classmethod
+    def from_df(
+        cls,
+        metadata_df: pd.DataFrame | DataFrame,
+        data_df: DataFrame | None = None,
+    ) -> Metadata:
+        """Load metadata from an in-memory DataFrame (Spark of pandas), without the original dataset.
+
+        Parameters
+        ----------
+        metadata_df : pd.DataFrame | DataFrame
+            DataFrame object containing metadata and transformations.
+        data_df : DataFrame | None, optional
+            Optionally, attach an actual dataset to the Metadata object for running
+            transformations on it automatically, by default None
+
+        Returns
+        -------
+        Metadata
+            Object allowing to visualize, edit, and generate PySpark code from metadata.
+        """
+        md = Metadata(df=None)
+        if not isinstance(metadata_df, (pd.DataFrame, DataFrame)):
+            msg = "metadata_df must be a pandas or Spark DataFrame"
+            raise TypeError(msg)
+        md.metadata_df = (
+            pd.DataFrame(metadata_df.toPandas()).fillna(value=np.nan)
+            if isinstance(metadata_df, DataFrame)
+            else metadata_df
+        )
+        md.data_df = data_df
+
+        return md
+
     def _infer(self, column_name: str) -> str:
         sampled_df = self.data_df.sample(
             fraction=self.infer_fraction,
@@ -366,7 +401,7 @@ class Metadata:
     @staticmethod
     def _keep_dest_cols(metadata_df: pd.DataFrame) -> pd.DataFrame:
         has_dest_col = (metadata_df["dest_column_name"].isna()) | (
-            metadata_df["dest_column_name"] == ""  # noqa: PLC1901
+            metadata_df["dest_column_name"] == ""
         )
         return metadata_df.loc[~has_dest_col]
 
