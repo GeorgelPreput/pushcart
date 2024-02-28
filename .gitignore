@@ -171,3 +171,6 @@ poetry.lock
 
 # Ruff
 .ruff_cache
+
+# Python-version 
+.python-version
