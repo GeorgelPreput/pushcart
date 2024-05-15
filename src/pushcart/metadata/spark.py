@@ -1,12 +1,14 @@
 """PySpark transformations and code generation."""
 
-import pandas as pd
-import pyspark.sql.functions as F  # noqa: N812
+from collections.abc import Hashable
+from typing import Any
+
+import pyspark.sql.functions as F
 from loguru import logger
 from pyspark.sql import Column, DataFrame
 
 
-def generated_col_or_transform(transformation_step: str) -> str:
+def generated_col_or_transform(transformation_step: dict[Hashable, Any]) -> str:
     """Generate column or transformation function based on the transformation step.
 
     Parameters
@@ -18,6 +20,7 @@ def generated_col_or_transform(transformation_step: str) -> str:
     -------
     str
         Column name or transformation function as a string.
+
     """
     if (
         isinstance(transformation_step["transform_function"], str)
@@ -29,7 +32,7 @@ def generated_col_or_transform(transformation_step: str) -> str:
 
 
 def generated_transform_with_default(
-    transformation_step: str,
+    transformation_step: dict[Hashable, Any],
     col_or_transf: str,
 ) -> str:
     """Generate transformation with default value if specified.
@@ -45,6 +48,7 @@ def generated_transform_with_default(
     -------
     str
         Column or transformation function with default value if specified.
+
     """
     if (
         isinstance(transformation_step["default_value"], str)
@@ -60,22 +64,23 @@ def generated_transform_with_default(
 
 
 def generated_cast_or_original_dtype(
-    transformation_step: str,
-    col_or_transf: Column,
-) -> Column:
+    transformation_step: dict[Hashable, Any],
+    col_or_transf: str,
+) -> str:
     """Cast to the destination type or return the original column based on the transformation step.
 
     Parameters
     ----------
     transformation_step : dict
         Dictionary containing transformation information.
-    col_or_transf : Column
-        PySpark Column object.
+    col_or_transf : str
+        PySpark Column name.
 
     Returns
     -------
     Column
-        PySpark Column object, casted or original.
+        PySpark Column name, casted or original.
+
     """
     if (
         transformation_step["source_column_type"]
@@ -91,7 +96,10 @@ def generated_cast_or_original_dtype(
     return col_or_transf
 
 
-def generate_code(transformations: pd.DataFrame, dest_cols: list[str]) -> str:
+def generate_code(
+    transformations: list[dict[Hashable, Any]],
+    dest_cols: list[str],
+) -> str:
     """Generate PySpark transformation code based on existing metadata.
 
     Parameters
@@ -105,6 +113,7 @@ def generate_code(transformations: pd.DataFrame, dest_cols: list[str]) -> str:
     -------
     str
         String containing runnable PySpark code
+
     """
     code_lines = ["df = (df"]
 
@@ -123,7 +132,7 @@ def generate_code(transformations: pd.DataFrame, dest_cols: list[str]) -> str:
     return code_str
 
 
-def col_or_transform(transformation_step: str) -> Column:
+def col_or_transform(transformation_step: dict[Hashable, Any]) -> Column:
     """Evaluate column or transformation function based on the transformation step.
 
     Parameters
@@ -135,18 +144,21 @@ def col_or_transform(transformation_step: str) -> Column:
     -------
     Column
         PySpark Column object.
+
     """
     if (
         isinstance(transformation_step["transform_function"], str)
         and len(transformation_step["transform_function"]) > 0
     ):
-        return eval(transformation_step["transform_function"])  # noqa: PGH001
+        return eval(  # pylint: disable=W0123  # noqa: S307
+            transformation_step["transform_function"],
+        )
 
     return F.col(transformation_step["source_column_name"])
 
 
 def transform_with_default(
-    transformation_step: str,
+    transformation_step: dict[Hashable, Any],
     col_or_transf: Column,
 ) -> Column:
     """Apply transformation with default value if specified.
@@ -162,6 +174,7 @@ def transform_with_default(
     -------
     Column
         PySpark Column object with default value applied if specified.
+
     """
     if (
         isinstance(transformation_step["default_value"], str)
@@ -179,7 +192,7 @@ def transform_with_default(
 
 
 def cast_or_original_dtype(
-    transformation_step: str,
+    transformation_step: dict[Hashable, Any],
     col_or_transf: Column,
 ) -> Column:
     """Cast to the destination type or return the original column based on the transformation step.
@@ -195,6 +208,7 @@ def cast_or_original_dtype(
     -------
     Column
         PySpark Column object, casted or original.
+
     """
     if (
         transformation_step["source_column_type"]
@@ -212,7 +226,7 @@ def cast_or_original_dtype(
 
 def transform(
     data_df: DataFrame,
-    transformations: pd.DataFrame,
+    transformations: list[dict[Hashable, Any]],
     dest_cols: list[str],
 ) -> DataFrame:
     """Perform the transformations configured in the metadata table on the input DataFrame.
@@ -230,6 +244,7 @@ def transform(
     -------
     DataFrame
         PySpark DataFrame containing the transformed data.
+
     """
     result_df = data_df
     for t in transformations:

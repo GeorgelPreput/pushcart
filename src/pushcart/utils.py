@@ -1,3 +1,5 @@
+"""Utility functions for PushCart."""
+
 import re
 
 
@@ -21,6 +23,7 @@ def multireplace(string: str, replacements: dict, ignore_case: bool = False) -> 
     -------
     str
         New string with substrings replaced
+
     """
     if not replacements:
         return string
@@ -32,7 +35,7 @@ def multireplace(string: str, replacements: dict, ignore_case: bool = False) -> 
     # {"ab": "AB", "abc", "ABC"} for the string "hey abc", it should produce
     # "hey ABC" and not "hey ABc"
     rep_sorted = sorted(replacements, key=len, reverse=True)
-    rep_escaped = map(re.escape, rep_sorted)
+    rep_escaped = [str(escaped) for escaped in map(re.escape, rep_sorted)]
 
     pattern = re.compile("|".join(rep_escaped), re.IGNORECASE if ignore_case else 0)
 
@@ -61,6 +64,7 @@ def pandas_to_spark_datetime_pattern(pattern: str) -> str:
         The converted Spark datetime format pattern string.
         For example, given the input pattern "%Y-%m-%d %H:%M:%S",
         the function would return "yyyy-MM-dd HH:mm:ss".
+
     """
     replacement_map = {
         "%Y": "yyyy",

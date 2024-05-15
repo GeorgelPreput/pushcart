@@ -15,6 +15,6 @@ DeltaTableHandler
     A logging handler that writes log records to a Delta table in Apache Spark.
 """
 
-from .delta_table_handler import DeltaTableHandler
+from .app_insights_handler import ApplicationInsightsHandler
 
-__all__ = ["DeltaTableHandler"]
+__all__ = ["ApplicationInsightsHandler"]

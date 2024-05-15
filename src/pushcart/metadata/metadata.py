@@ -3,33 +3,40 @@
 from __future__ import annotations
 
 import contextlib
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
-import pyspark.sql.functions as F  # noqa: N812
-import pyspark.sql.types as T  # noqa: N812
+import pyspark.sql.functions as F
+import pyspark.sql.types as T
 from dateutil.parser import ParserError
-from ipydatagrid import DataGrid
+from ipydatagrid import DataGrid  # type: ignore[import, import-untyped]
 from IPython.display import display
-from ipywidgets import Button, HBox, VBox
+from ipywidgets import Button, HBox, VBox  # type: ignore[import, import-untyped]
 from loguru import logger
-from pandas.core.tools.datetimes import _guess_datetime_format_for_array
-from pyspark.sql import DataFrame, SparkSession
+from pandas.core.tools.datetimes import (  # type: ignore[attr-defined]
+    _guess_datetime_format_for_array,
+)
+from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql.window import Window
 
 from pushcart.metadata.spark import generate_code as sp_generate_code
 from pushcart.metadata.spark import transform as sp_transform
 from pushcart.utils import pandas_to_spark_datetime_pattern
 
+if TYPE_CHECKING:
+    from collections.abc import Hashable
 
-def __get_spark_session() -> SparkSession:
-    return SparkSession.getActiveSession() or SparkSession.newSession()
 
-
-def _infer_json_schema(df: DataFrame, column_name: str) -> str:
+def _infer_json_schema(
+    df: DataFrame,
+    column_name: str,
+    spark: SparkSession | None = None,
+) -> str | None:
     logger.info(f"Attempting to infer JSON schema for {column_name} column.")
 
-    spark = __get_spark_session()
+    if not spark:
+        spark = SparkSession.builder.getOrCreate()
     schema = spark.read.json(df.select(column_name).rdd.map(lambda x: x[0])).schema
 
     if schema.fieldNames() == ["_corrupt_record"]:
@@ -46,7 +53,7 @@ def _infer_json_schema(df: DataFrame, column_name: str) -> str:
     return f'F.from_json(F.col("{column_name}"), schema="{schema.simpleString()}")'
 
 
-def _infer_timestamps(df: DataFrame, column_name: str) -> str:
+def _infer_timestamps(df: DataFrame, column_name: str) -> str | None:
     logger.info(f"Attempting to infer timestamp format for {column_name} column.")
 
     pd_ts_format = None
@@ -67,7 +74,11 @@ def _infer_timestamps(df: DataFrame, column_name: str) -> str:
     return f'F.to_timestamp(F.col("{column_name}"), "{spark_ts_format}")'
 
 
-def get_unique_values(df: DataFrame, max_rows: int = None) -> DataFrame:
+def get_unique_values(
+    df: DataFrame,
+    max_rows: int | None = None,
+    spark: SparkSession | None = None,
+) -> DataFrame:
     """Get a dataframe with only per-column unique values for inference.
 
     Useful for more accurately inferring metadata for some datasets.
@@ -105,24 +116,30 @@ def get_unique_values(df: DataFrame, max_rows: int = None) -> DataFrame:
     max_rows : int, optional
         Number of unique values to bring in per column, by default None.
         If not specified, max_rows will use the total record count of `df`
+    spark: SparkSession, optional
+        Optionally provide an existing SparkSession, by default None
 
     Returns
     -------
     DataFrame
         Spark DataFrame containing per-column unique data
+
     """
     if not df:
-        return None
+        msg = "Parameter `df` must be a Spark DataFrame"
+        raise ValueError(msg)
 
-    spark = __get_spark_session()
+    if not spark:
+        spark = SparkSession.builder.getOrCreate()
+
     if df.isEmpty():
         return spark.createDataFrame([], df.schema)
 
     if not max_rows:
-        max_rows - df.count()
+        max_rows = df.count() or 0
 
     unique_vals_df: DataFrame = spark.createDataFrame(
-        [{"_row_index": r} for r in range(1, max_rows)],
+        [Row(_row_index=r) for r in range(1, max_rows)],
     )
 
     for c in df.columns:
@@ -152,7 +169,7 @@ class Metadata:
 
     def __init__(
         self,
-        df: DataFrame,
+        df: DataFrame | None,
         infer_json_schema: bool = True,
         infer_timestamps: bool = True,
         infer_fraction: float = 0.25,
@@ -169,6 +186,7 @@ class Metadata:
             Whether to try to infer timestamp string column formats, by default True
         infer_fraction : float, optional
             The fraction of data that is sampled from the input, by default 0.25
+
         """
         self.data_df = df
 
@@ -176,7 +194,7 @@ class Metadata:
         self.infer_timestamps = infer_timestamps
         self.infer_fraction = infer_fraction
 
-        self.metadata_df: pd.DataFrame = None
+        self.metadata_df: pd.DataFrame | None = None
         self.metadata_grid: DataGrid = None
 
         self.metadata_cols = [
@@ -207,6 +225,7 @@ class Metadata:
         -------
         Metadata
             Object allowing to visualize, edit, and generate PySpark code from metadata.
+
         """
         md = Metadata(df=None)
         md.metadata_df = pd.read_csv(path)
@@ -220,7 +239,7 @@ class Metadata:
         metadata_df: pd.DataFrame | DataFrame,
         data_df: DataFrame | None = None,
     ) -> Metadata:
-        """Load metadata from an in-memory DataFrame (Spark of pandas), without the original dataset.
+        """Load metadata from an in-memory DataFrame, without the original dataset.
 
         Parameters
         ----------
@@ -234,9 +253,15 @@ class Metadata:
         -------
         Metadata
             Object allowing to visualize, edit, and generate PySpark code from metadata.
+
+        Raises
+        ------
+        TypeError
+            metadata_df must be a pandas or Spark DataFrame
+
         """
         md = Metadata(df=None)
-        if not isinstance(metadata_df, (pd.DataFrame, DataFrame)):
+        if not isinstance(metadata_df, pd.DataFrame | DataFrame):
             msg = "metadata_df must be a pandas or Spark DataFrame"
             raise TypeError(msg)
         md.metadata_df = (
@@ -249,6 +274,10 @@ class Metadata:
         return md
 
     def _infer(self, column_name: str) -> str:
+        if not self.data_df:
+            msg = "Cannot infer metadata since no Spark DataFrame has been provided."
+            raise ValueError(msg)
+
         sampled_df = self.data_df.sample(
             fraction=self.infer_fraction,
             withReplacement=False,
@@ -269,7 +298,7 @@ class Metadata:
 
         return ""
 
-    def _generate_field(self, field: T.StructField, parent: str = None) -> dict:
+    def _generate_field(self, field: T.StructField, parent: str | None = None) -> dict:
         name = field.name
         dtype = field.dataType
         flat_parent = parent.replace(".", "_") if parent else None
@@ -277,24 +306,30 @@ class Metadata:
             "source_column_name": f"{flat_parent}.{name}" if parent else name,
             "source_column_type": dtype.simpleString(),
             "dest_column_name": f"{flat_parent}_{name}" if parent else name,
-            "dest_column_type": dtype.elementType.simpleString()
-            if isinstance(dtype, T.ArrayType)
-            else dtype.simpleString(),
+            "dest_column_type": (
+                dtype.elementType.simpleString()
+                if isinstance(dtype, T.ArrayType)
+                else dtype.simpleString()
+            ),
             "transform_function": (
-                f'F.explode("{flat_parent}.{name}")'
-                if parent
-                else f'F.explode("{name}")'
-            )
-            if isinstance(dtype, T.ArrayType)
-            else self._infer(f"{parent}.{name}" if parent else name)
-            if isinstance(dtype, T.StringType)
-            else "",
+                (
+                    f'F.explode("{flat_parent}.{name}")'
+                    if parent
+                    else f'F.explode("{name}")'
+                )
+                if isinstance(dtype, T.ArrayType)
+                else (
+                    self._infer(f"{parent}.{name}" if parent else name)
+                    if isinstance(dtype, T.StringType)
+                    else ""
+                )
+            ),
             "default_value": "",
             "validation_rule": "",
             "validation_action": "",
         }
 
-    def _generate(self, schema: T.StructType, parent: str = None) -> list:
+    def _generate(self, schema: T.StructType, parent: str | None = None) -> list:
         fields = []
 
         for f in schema.fields:
@@ -325,6 +360,7 @@ class Metadata:
         -------
         pd.DataFrame
             Pandas DataFrame containing proposed transformation metadata
+
         """
         if self.data_df is None:
             msg = "Cannot generate new metadata since no Spark DataFrame has been provided."
@@ -362,6 +398,7 @@ class Metadata:
         ------
         ValueError
             Can only show the metadata if it is present in memory.
+
         """
         if self.metadata_df is None:
             msg = "Cannot visualize metadata as it has not yet been generated/loaded."
@@ -394,14 +431,19 @@ class Metadata:
         ----------
         path : str
             File path to save to
+
         """
+        if not self.metadata_df:
+            msg = "Cannot save metadata as it has not yet been generated/loaded."
+            raise ValueError(msg)
+
         self.metadata_df.to_csv(path)
         logger.info(f"Wrote {len(self.metadata_df.index)} lines to {path}")
 
     @staticmethod
     def _keep_dest_cols(metadata_df: pd.DataFrame) -> pd.DataFrame:
         has_dest_col = (metadata_df["dest_column_name"].isna()) | (
-            metadata_df["dest_column_name"] == ""
+            not metadata_df["dest_column_name"]
         )
         return metadata_df.loc[~has_dest_col]
 
@@ -419,7 +461,7 @@ class Metadata:
     def _prepare_metadata(
         self,
         keep_technical_cols: bool = False,
-    ) -> tuple[pd.DataFrame, list[str]]:
+    ) -> tuple[list[dict[Hashable, Any]], list[str]]:
         """Parse the metadata and keep or drop technical columns (starting with underscore).
 
         Parameters
@@ -430,12 +472,13 @@ class Metadata:
         Returns
         -------
         tuple[pd.DataFrame, list[str]]
-            Pandas DataFrame with the final set of pending transformations and list of columns to keep.
+            DataFrame with the final set of pending transformations and list of columns to keep.
 
         Raises
         ------
         ValueError
             Can only generate code based on metadata that is present in memory.
+
         """
         if self.metadata_df is None:
             msg = "Cannot generate PySpark code from empty metadata."
@@ -446,9 +489,13 @@ class Metadata:
         dest_cols = [col for col in mdf["dest_column_name"].to_list() if col] or None
         if not dest_cols:
             logger.warning(
-                "No destination columns defined in metadata. No code to generate.",
+                "No destination columns defined in metadata. Using source column names.",
             )
-            return None
+            dest_cols = [col for col in mdf["source_column_name"].to_list() if col]
+
+        if not dest_cols:
+            msg = "Cannot generate PySpark code from empty metadata."
+            raise ValueError(msg)
 
         if not keep_technical_cols:
             mdf = self._drop_technical_cols(mdf)
@@ -467,6 +514,7 @@ class Metadata:
         -------
         str | None
             String containing runnable PySpark code
+
         """
         transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
 
@@ -484,7 +532,12 @@ class Metadata:
         -------
         DataFrame
             Spark DataFrame containing the transformed data
+
         """
+        if not self.data_df:
+            msg = "Cannot perform transformations since no Spark DataFrame has been provided."
+            raise ValueError(msg)
+
         transformations, dest_cols = self._prepare_metadata(keep_technical_cols)
 
         return sp_transform(self.data_df, transformations, dest_cols)
