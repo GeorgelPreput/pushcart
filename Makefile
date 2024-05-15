@@ -26,6 +26,15 @@ setup:
 	.venv/bin/pre-commit install
 
 test:
+	if [[ -n "$$BASH_VERSION" ]] || [[ -n "$$ZSH_VERSION" ]]; then \
+		. .venv/bin/activate; \
+	elif [[ -n "$$FISH_VERSION" ]]; then \
+		. .venv/bin/activate.fish; \
+	else \
+		echo "Unsupported shell. Only bash, zsh, and fish are supported."; \
+		exit 1; \
+	fi
+
 	.venv/bin/pre-commit run --all-files
 	poetry update
 	poetry build
