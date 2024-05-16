@@ -53,3 +53,6 @@ clean:
 	find . -name "*.egg-info" -type d -exec rm -rf {} +
 	find . -name "*.dist-info" -type d -exec rm -rf {} +
 	find . -name "*.egg" -type d -exec rm -rf {} +
+
+docs:
+	mkdocs build

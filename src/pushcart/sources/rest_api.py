@@ -1,4 +1,4 @@
-"""A custom DataSource implementation for reading data from a REST API."""
+"""A custom DataSource implementation for reading data from a REST API. Requires PySpark >= 4.0."""
 
 import contextlib
 import json

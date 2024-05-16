@@ -1,0 +1,30 @@
+site_name: Pushcart API Documentation
+site_url: https://georgelpreput.github.io/pushcart
+theme:
+  name: material
+  features:
+    - navigation.path
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - toc.follow
+    - toc.integrate
+
+plugins:
+  - offline
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: ["src"]
+
+nav:
+  - Home: index.md
+  - API:
+      - Metadata:
+          - Metadata: api/metadata/metadata.md
+          - Spark: api/metadata/spark.md
+      - Data Sources:
+          - REST API: api/sources/rest_api.md
+      - Log Handlers:
+          - Application Insights: api/log_handlers/app_insights_handler.md
