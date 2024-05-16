@@ -419,10 +419,19 @@ class Metadata:
 
         display(layout)
 
-    def get_metadata(self) -> None:
-        """Generate new metadata for the provided dataset and visualize it."""
+    def get_metadata(self, show: bool = True) -> None:
+        """Generate new metadata for the provided dataset and visualize it.
+
+        Parameters
+        ----------
+        show : bool
+            Display metadata editor in a notebook.
+
+        """
         self.metadata_df = self.generate()
-        self.visualize()
+
+        if show:
+            self.visualize()
 
     def save_to_csv(self, path: str) -> None:
         """Save the current version of the metadata to a CSV file.
@@ -443,7 +452,7 @@ class Metadata:
     @staticmethod
     def _keep_dest_cols(metadata_df: pd.DataFrame) -> pd.DataFrame:
         has_dest_col = (metadata_df["dest_column_name"].isna()) | (
-            not metadata_df["dest_column_name"]
+            metadata_df["dest_column_name"] == ""
         )
         return metadata_df.loc[~has_dest_col]
 
