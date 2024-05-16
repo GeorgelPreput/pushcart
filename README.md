@@ -2,7 +2,10 @@
 
 Helps with moving potatoes, bricks and data around.
 
-Pushcart is a metadata-based solution accelerator running on top of Spark. It also provides a set of ready-made functionalities for data transformations which might otherwise take a lot of code to put together using only `pyspark.sql.functions`.
+Pushcart is a metadata-based solution accelerator running on top of Spark. It
+also provides a set of ready-made functionalities for data transformations which
+might otherwise take a lot of code to put together using only
+`pyspark.sql.functions`.
 
 ## Who is this for
 
@@ -11,7 +14,8 @@ Pushcart is a metadata-based solution accelerator running on top of Spark. It al
 
 ## How does the metadata look like?
 
-Useful for transforming data from bronze to silver, a metadata specification looks as such:
+Useful for transforming data from bronze to silver, a metadata specification
+looks as such:
 
 column_order|source_column_name|source_column_type|dest_column_name|dest_column_type|transform_function|default_value|validation_rule|validation_action
 ------------|------------------|------------------|----------------|----------------|------------------|-------------|---------------|-----------------

@@ -1,3 +1,7 @@
+# Created by https://www.toptal.com/developers/gitignore/api/python
+# Edit at https://www.toptal.com/developers/gitignore?templates=python
+
+### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -159,18 +163,25 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# Trunk code formatter
-.trunk
+### Python Patch ###
+# Poetry local configuration file - https://python-poetry.org/docs/configuration/#local-configuration
+# poetry.toml
 
-# Visual Studio Code settings
-.vscode
-*.code-workspace
+# ruff
+.ruff_cache/
 
-# Poetry lock file
-poetry.lock
+# LSP config files
+pyrightconfig.json
 
-# Ruff
-.ruff_cache
+# End of https://www.toptal.com/developers/gitignore/api/python
 
-# Python-version 
-.python-version
+# Ignore Mac system files
+.DS_Store
+
+# Ignore simulated Spark warehouse
+spark-warehouse/
+
+# Ignore Databricks Asset Bundles
+.databricks/
+scratch/**
+!scratch/README.md
