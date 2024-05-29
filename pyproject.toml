@@ -5,7 +5,7 @@ exclude = ["**/.pyenv"]
 
 [tool.black]
 line-length = 88
-target-version = ["py311"]
+target-version = ["py310", "py311"]
 exclude = '''
 (
   /(
@@ -31,7 +31,7 @@ lint.ignore = [
     "N812",   # Checks for lowercase imports that are aliased to non-lowercase names
     "S101",   # Use of `assert` detected
 ]
-target-version = "py311"
+target-version = "py310"
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
 lint.fixable = [
@@ -96,6 +96,7 @@ authors = ["Victor Blaga <victor.blaga@revodata.nl>"]
 license = "Apache-2.0"
 readme = "README.md"
 classifiers = [
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
@@ -107,7 +108,7 @@ packages = [{ include = "pushcart", from = "src" }]
 
 [tool.poetry.dependencies]
 python-dotenv = "^1.0.1"
-python = "^3.11"
+python = "^3.10"
 loguru = "^0.7.2"
 azure-monitor-opentelemetry = "^1.4.0"
 opentelemetry-sdk = "^1.24.0"
@@ -115,26 +116,26 @@ delta-spark = "^3.1.0"
 validators = "^0.28.1"
 httpx = "^0.27.0"
 authlib = "^1.3.0"
-mkdocstrings = {extras = ["python"], version = "^0.25.1"}
+mkdocstrings = { extras = ["python"], version = "^0.25.1" }
 
 [tool.poetry.group.dev.dependencies]
-# Matching DBR 15.0
-black = { version = "23.3.0", allow-prereleases = true }
-databricks-sdk = "0.20.0"
-ipykernel = "6.25.1"
-ipywidgets = "8.0.4"
-mkdocs-material = "^9.5.23"
-mkdocstrings = { extras = ["python"], version = "^0.25.1" }
-mypy-extensions = "^1.0.0"
-pandas = "2.0.3"
-pyarrow = "^14.0.1"
-pydantic = "1.10.6"
+# Matching >= DBR 14.3
+black = { version = "^22.6.0", allow-prereleases = true }
+databricks-sdk = "^0.1.6"
+ipykernel = "^6.25.0"
+ipywidgets = "^7.7.2"
+mypy-extensions = "*"                                     # ^0.4.3 in DBR 14.3 but local setup requires ^1.0.0
+pandas = "^1.5.3"
+pyarrow = "*"                                             # ^8.0.0 in DBR 14.3 but local setup fails without ^14.0.0
+pydantic = "^1.10.6"
 
 # Not in DBR
 bumpver = "^2023.1129"
 coverage = "^7.5.0"
 databricks-labs-pylint = "^0.4.0"
 ipydatagrid = "^1.3.1"
+mkdocs-material = "^9.5.23"
+mkdocstrings = { extras = ["python"], version = "^0.25.1" }
 mypy = "^1.5.1"
 pandas-stubs = "^2.2.0.240218"
 pre-commit = "^3.5.0"
@@ -172,7 +173,7 @@ push = true
 ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.10"
 ignore_missing_imports = true
 mypy_path = "./stubs"
 files = "src/**/*.py, tests/**/*.py"

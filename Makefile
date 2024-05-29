@@ -26,7 +26,7 @@ setup:
 	.venv/bin/pre-commit install
 
 test:
-	if [[ -n "$$BASH_VERSION" ]] || [[ -n "$$ZSH_VERSION" ]]; then \
+	-@if [[ -n "$$BASH_VERSION" ]] || [[ -n "$$ZSH_VERSION" ]]; then \
 		. .venv/bin/activate; \
 	elif [[ -n "$$FISH_VERSION" ]]; then \
 		. .venv/bin/activate.fish; \
