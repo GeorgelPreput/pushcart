@@ -90,7 +90,7 @@ builtins = ["dbutils", "dlt", "display"]
 
 [tool.poetry]
 name = "pushcart"
-version = "1.7.4"
+version = "1.7.5"
 description = "Metadata transformations for Spark"
 authors = ["Victor Blaga <victor.blaga@revodata.nl>"]
 license = "Apache-2.0"
@@ -159,7 +159,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.bumpver]
-current_version = "1.7.4"
+current_version = "1.7.5"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "bump version {old_version} -> {new_version}"
 commit = true
